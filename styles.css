@@ -1,0 +1,378 @@
+/* =========================
+   KKS – Kinderkassa Styles
+   Version 1.1.2
+   ========================= */
+
+:root {
+  --bg: #0f1115;
+  --panel: #151a22;
+  --panel2: #10141b;
+  --text: #e9eef7;
+  --muted: #a9b3c2;
+  --line: #252c39;
+  --btn: #2a3242;
+  --btn2: #1f2734;
+  --danger: #7a2c2c;
+  --accent: #3a6cff;
+  --accent-soft: #4b7dff;
+  --radius: 14px;
+}
+
+/* Reset */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 30% -10%, #1e2a45 0%, transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, #2a1e45 0%, transparent 55%),
+    var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* =========================
+   Topbar
+   ========================= */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 12, 16, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.logo {
+  font-size: 28px;
+}
+
+.title {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.top-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.clock {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================
+   Layout
+   ========================= */
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+  padding: 14px;
+  height: calc(100vh - 64px);
+}
+
+/* =========================
+   Panels
+   ========================= */
+
+.panel {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), transparent 30%),
+    var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-head {
+  padding: 12px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-title {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* =========================
+   Buttons
+   ========================= */
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--btn);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn:hover {
+  filter: brightness(1.1);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.btn.subtle {
+  background: var(--btn2);
+  color: var(--muted);
+}
+
+.btn.danger {
+  background: var(--danger);
+}
+
+.btn.big {
+  padding: 16px 14px;
+  font-size: 18px;
+}
+
+/* =========================
+   Scan Row
+   ========================= */
+
+.scanRow {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.scanInput {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0d1016;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* =========================
+   Warenkorb Tabelle
+   ========================= */
+
+.tableWrap {
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.cartTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cartTable th,
+.cartTable td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cartTable th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.right {
+  text-align: right;
+}
+
+.iconBtn {
+  background: var(--btn2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+/* =========================
+   Totals
+   ========================= */
+
+.totals {
+  border-top: 1px solid var(--line);
+  padding: 12px;
+}
+
+.totRow {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+.totRow.big {
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+/* =========================
+   Zahlung
+   ========================= */
+
+.paySummary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.sumBox {
+  background: #0d1016;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.sumBox .label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sumBox .value {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--accent-soft);
+}
+
+.payButtonsTop {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* =========================
+   Geld Buttons
+   ========================= */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.moneyBtn {
+  background: #0d1016;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+}
+
+.moneyBtn .val {
+  font-size: 22px;
+  font-weight: 900;
+  text-align: center;
+  color: var(--accent);
+}
+
+.moneyBtn .count {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* =========================
+   Admin Modal
+   ========================= */
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.modal {
+  width: min(980px, 100%);
+  max-height: 90vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalBody {
+  overflow-y: auto;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* =========================
+   Kid Mode
+   ========================= */
+
+.kid .scanRow {
+  display: none;
+}
+
+.kid .moneyBtn .val {
+  font-size: 28px;
+}
+
+.kid .totRow.big {
+  font-size: 32px;
+}
+
+/* =========================
+   Responsive / Tablet
+   ========================= */
+
+@media (max-width: 1000px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .paySummary {
+    grid-template-columns: 1fr;
+  }
+
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
