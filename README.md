@@ -1,9 +1,9 @@
 # 🧒💰 KKS – Kinder-Kassensystem
 
-**KKS** ist ein echtes, offline-fähiges Kassensystem für Kinderkaufläden.  
-Es wurde entwickelt, um Kindern spielerisch, aber realistisch zu zeigen,  
-wie **Verkaufen, Bezahlen und Rückgeld** funktionieren –  
-**ohne Werbung, ohne Cloud, ohne Internetzwang**.
+KKS ist ein **echtes, offline-fähiges Kassensystem für Kinder**.  
+Es wurde entwickelt, um Kindern spielerisch, aber realistisch zu zeigen, wie
+Verkaufen, Bezahlen und Rückgeld funktionieren – **ohne Werbung, ohne Cloud,
+ohne Internetzwang**.
 
 Entstanden aus einer einfachen Papa-Idee für den Alltag.
 
@@ -11,110 +11,94 @@ Entstanden aus einer einfachen Papa-Idee für den Alltag.
 
 ## 🎯 Ziel des Projekts
 
-KKS soll kein Spielzeug sein, sondern ein **vereinfachtes, echtes Kassensystem**,  
-das Abläufe verständlich macht:
+KKS soll Kindern ermöglichen:
+- Preise zu verstehen
+- mit Geld zu rechnen
+- Abläufe im Handel kennenzulernen
+- Verantwortung und Struktur zu lernen
 
-- scannen statt tippen  
-- rechnen statt raten  
-- verstehen statt klicken  
-
-Kinder sollen sehen, **wie eine Kassa wirklich arbeitet**.
-
----
-
-## ✅ Aktuelle Version
-
-### **Version 1.1.2 – stabil & einsatzbereit**
-
-Der Funktionsumfang von KKS ist vollständig umgesetzt.
+**Ohne Ablenkung, ohne Datensammlung, ohne versteckte Kosten.**
 
 ---
 
-## 🔧 Funktionen
+## ✨ Eigenschaften
 
-- Komplett **offline-fähig**
-- Raspberry Pi als Zentrale
-- Web-Oberfläche für Tablet oder PC
-- Unterstützung für Barcode-Scanner
-- **EAN-8 und EAN-13 Produktcodes**
-- Produktliste mit festen Preisen
-- Produktverwaltung im Admin-Bereich
-- Summen- und Rückgeldberechnung
-- „Bezahlt“-Funktion
-- Bon-Druck  
-  - USB / seriell (z. B. ältere Bondrucker)
-- Konfigurierbare Anzeige:
-  - nur ganze Euro (keine Dezimalstellen)
-  - feste Betrags-Buttons (z. B. 1€, 2€, 5€, 10€, 20€)
-- **Keine Werbung**
-- **Kein Cloud-Zwang**
-- **Kein Online-Account notwendig**
+- 📴 **100 % offline**
+- ☁️ **keine Cloud**
+- 🚫 **keine Werbung**
+- 🔐 **keine Accounts**
+- 🧾 echter Kassenbon (Bondrucker)
+- 🔍 Barcode-Scanner (EAN-8 / EAN-13)
+- 🧠 realistische Kassenlogik
+- 🧩 ideal als Bastel- & Lernprojekt für Eltern & Kinder
 
 ---
 
-## 🧠 Pädagogischer Ansatz
+## 🛠️ Technik (Kurzüberblick)
 
-- Keine versteckten Automatiken
-- Rechnen bleibt sichtbar
-- Rückgeld wird bewusst verstanden
-- Einfach, übersichtlich, nachvollziehbar
-
-KKS ist bewusst **nicht überladen**  
-und verzichtet auf unnötige Spiel- oder Gamification-Elemente.
-
----
-
-## 🧾 Roadmap
-
-Aktuell sind **keine neuen Features geplant**.
-
-Der Fokus liegt auf:
-- Stabilität
-- Bugfixes
-- Dokumentation
-- Feedback aus der Community
-
-Neue Funktionen werden nur umgesetzt,  
-wenn sie **sinnvoll, kindgerecht und einfach** bleiben.
+- Raspberry Pi
+- Barcode-Scanner
+- Bondrucker
+- Web-Interface (Tablet, PC, Handy)
+- lokale Datenhaltung
+- vollständig offline nutzbar
 
 ---
 
-## 📦 Einsatzgebiet
+## 🧩 Philosophie
 
-- Kinderkaufläden
-- Lern- & Spielumgebungen
-- Pädagogische Projekte
-- DIY-Kassenlösungen mit echter Hardware
+KKS ist **bewusst kein kommerzielles Produkt**.
+
+In einer Zeit voller:
+- Abos
+- Tracking
+- Cloud-Zwang
+- Werbung für Kinder
+
+soll KKS zeigen, dass es auch anders geht:
+**einfach, greifbar, ehrlich.**
 
 ---
 
-## 📜 Lizenz
+## 📦 Fertige Systeme
 
-**Custom License – KKS**
+Das Projekt ist als **DIY-Projekt** gedacht.
 
-- Nutzung, Anpassung und Weitergabe erlaubt
-- **Kommerzielle Weiterverbreitung oder Verkauf ist nicht erlaubt**
-- Copyright verbleibt beim Projektinhaber
+In Einzelfällen können **fertig eingerichtete Systeme** weitergegeben werden,
+ausschließlich zur Deckung von:
+- Materialkosten
+- Einrichtungs- und Testaufwand
 
-Details siehe `LICENSE`-Datei.
+Die Software selbst bleibt **kostenlos und frei zugänglich**.
+
+---
+
+## ⚖️ Lizenz
+
+Dieses Projekt ist **nicht kommerziell nutzbar**.  
+Verkauf, Vermarktung oder kommerzielle Nutzung sind **ohne ausdrückliche
+schriftliche Genehmigung nicht erlaubt**.
+
+Siehe: [LICENSE](LICENSE)
 
 ---
 
 ## ❤️ Projekt unterstützen
 
-KKS ist ein privates, freies Projekt.  
-Wenn es dir oder deinem Kind hilft, freut sich der Entwickler über freiwillige Unterstützung.
+Wenn dir die Idee gefällt und du das Projekt unterstützen möchtest, kannst du
+dies freiwillig tun – z. B. durch Feedback, Weiterempfehlung oder eine kleine
+Spende.
 
-👉 Spendeninfos findest du im Projekt oder im Admin-Bereich  
-*(optional & nicht verpflichtend)*
-
----
-
-## 👋 Mitmachen & Feedback
-
-Feedback, Ideen und Erfahrungen aus dem Alltag  
-sind jederzeit willkommen – gerne über GitHub oder Discord.
+(Kein Zwang. Keine Werbung. Kein Tracking.)
 
 ---
 
-**KKS – weil Lernen auch echt sein darf.**
+## 👨‍👦 Entstanden aus dem echten Leben
+
+KKS ist kein Startup.
+Kein Produkt.
+Kein Abo.
+
+Es ist ein Lernprojekt – entstanden für Kinder.
+
+Und genau so soll es bleiben.
