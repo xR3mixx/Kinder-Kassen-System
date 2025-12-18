@@ -1,17 +1,45 @@
 // =====================
 // Kinderkassa – Web App
 // =====================
+
+// --- Admin PIN (hier ändern) ---
 const ADMIN_PIN = "1234";
 
+// --- Default Produkte (Fallback, falls Server/JSON nicht erreichbar) ---
+const DEFAULT_PRODUCTS = {
+  "2000000000017": { name: "Apfel", price: 50 },
+  "2000000000024": { name: "Banane", price: 60 },
+  "2000000000031": { name: "Orange", price: 70 },
+  "2000000000048": { name: "Milch 1 L", price: 120 },
+  "2000000000055": { name: "Kakao", price: 150 },
+  "2000000000062": { name: "Wasser", price: 80 },
+  "2000000000079": { name: "Brot", price: 110 },
+  "2000000000086": { name: "Semmel", price: 40 },
+  "2000000000093": { name: "Käse", price: 180 },
+  "2000000000109": { name: "Wurst", price: 200 },
+  "2000000000116": { name: "Schokolade", price: 100 },
+  "2000000000123": { name: "Gummibärchen", price: 90 },
+  "2000000000130": { name: "Eis", price: 120 },
+  "2000000000147": { name: "Zahnbürste", price: 130 },
+  "2000000000154": { name: "Seife", price: 90 },
+  "2000000000161": { name: "Klopapier", price: 170 },
+  "2000000000178": { name: "Spielzeugauto", price: 350 },
+  "2000000000185": { name: "Puppe", price: 500 },
+  "2000000000192": { name: "Ball", price: 250 },
+  "2000000000208": { name: "Buch", price: 400 }
+};
+
+// --- Settings persisted (localStorage nur für UI-Settings, NICHT Produkte) ---
 const LS_SETTINGS = "kinderkassa_settings";
 
-// Default Settings
+// --- Settings Defaults ---
 const defaultSettings = {
-  uiMode: "standard",
-  centMode: "all",
-  bigNotes: "off",
-  confirmBigNotes: "on",
-  sound: "on",
+  uiMode: "standard",      // "standard" | "kid"
+  centMode: "all",         // "all" | "coarse" | "none"
+  bigNotes: "off",         // "on" | "off"
+  confirmBigNotes: "on",   // "on" | "off"
+  sound: "on",             // "on" | "off"
+  decimals: "on"           // "on" | "off"  <-- NEU
 };
 
 function loadSettings() {
@@ -27,34 +55,128 @@ function saveSettings(s) {
   localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
 }
 
-// Helpers
-function onlyDigits(s) { return String(s || "").replace(/\D/g, ""); }
-function clampInt(n) { n = Number(n); return Number.isFinite(n) ? Math.trunc(n) : 0; }
-function eur(cents) {
-  const v = (cents / 100).toFixed(2).replace(".", ",");
-  return `${v} €`;
+// --- Products (werden vom Server geladen/gespeichert) ---
+let PRODUCTS = { ...DEFAULT_PRODUCTS };
+
+async function loadProductsFromServer() {
+  try {
+    const res = await fetch("/products", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    // Falls die JSON leer ist, trotzdem fallback behalten
+    PRODUCTS = { ...DEFAULT_PRODUCTS, ...(data || {}) };
+    console.log("[products] loaded:", Object.keys(PRODUCTS).length);
+  } catch (e) {
+    console.warn("[products] load failed, using defaults:", e);
+    PRODUCTS = { ...DEFAULT_PRODUCTS };
+  }
+}
+
+async function saveProductsToServer() {
+  try {
+    const res = await fetch("/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(PRODUCTS)
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    console.log("[products] saved");
+    return true;
+  } catch (e) {
+    console.error("[products] save failed:", e);
+    return false;
+  }
+}
+
+// --- Helpers ---
+function onlyDigits(s) {
+  return String(s || "").replace(/\D/g, "");
+}
+function clampInt(n) {
+  n = Number(n);
+  if (!Number.isFinite(n)) return 0;
+  return Math.trunc(n);
 }
 function nowClock() {
   const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 function parseEuroToCents(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
+
+  // Wenn Dezimal AUS: interpretieren wir "3" als 3,00 €
+  if (settings.decimals === "off") {
+    const num = Number(raw.replace(",", "."));
+    if (!Number.isFinite(num) || num < 0) return null;
+    return Math.round(num * 100); // ganze Euro *100
+  }
+
+  // Normal: 1,20 oder 1.20
   const norm = raw.replace(/\s/g, "").replace(",", ".");
   const num = Number(norm);
   if (!Number.isFinite(num) || num < 0) return null;
   return Math.round(num * 100);
 }
 
-// EAN validation: akzeptiere EAN-8 ODER EAN-13 (nur Ziffern, Länge passt)
-function normalizeEan(eanInput) {
+// --- Anzeigeformat Euro (respektiert decimals) ---
+function eur(cents) {
+  const c = clampInt(cents);
+
+  if (settings.decimals === "off") {
+    const euros = Math.round(c / 100);
+    return `${euros} €`;
+  }
+
+  const v = (c / 100).toFixed(2).replace(".", ",");
+  return `${v} €`;
+}
+
+// --- EAN-13 helpers ---
+function ean13CheckDigit(base12) {
+  const s = onlyDigits(base12);
+  if (s.length !== 12) return null;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const d = parseInt(s[i], 10);
+    sum += (i % 2 === 0) ? d : (3 * d);
+  }
+  const mod = sum % 10;
+  return (10 - mod) % 10;
+}
+function isValidEan13(ean13) {
+  const s = onlyDigits(ean13);
+  if (s.length !== 13) return false;
+  const base12 = s.slice(0, 12);
+  const cd = ean13CheckDigit(base12);
+  if (cd === null) return false;
+  return cd === parseInt(s[12], 10);
+}
+function normalizeEanInputTo13(eanInput) {
   const s = onlyDigits(eanInput);
-  if (s.length === 8 || s.length === 13) return s;
+
+  // EAN-13
+  if (s.length === 13) return s;
+
+  // 12 -> berechne Prüfziffer
+  if (s.length === 12) {
+    const cd = ean13CheckDigit(s);
+    return cd === null ? null : (s + String(cd));
+  }
+
+  // EAN-8 erlauben wir fürs SCANNEN (optional):
+  // -> Wir lassen EAN-8 einfach als "8-stellig" durchgehen, ABER:
+  //    Produkte müssen dann exakt als 8-stellig im PRODUCTS stehen.
+  if (s.length === 8) return s;
+
   return null;
 }
 
-// Sound
+// -----------------
+// Sound (WebAudio)
+// -----------------
 let audioCtx = null;
 let audioUnlocked = false;
 let settings = loadSettings();
@@ -98,24 +220,26 @@ function playTone(freq, ms, volume = 0.08, type = "square") {
     osc.stop(t0 + ms / 1000);
   } catch {}
 }
-function soundScanOk() { playTone(1800, 70, 0.08, "square"); }
-function soundError()  { playTone(220, 180, 0.10, "sawtooth"); }
-function soundPrintOk(){ playTone(1200, 60, 0.07, "sine"); setTimeout(() => playTone(1500, 60, 0.07, "sine"), 70); }
+function soundScanOk()  { playTone(1800, 70, 0.08, "square"); }
+function soundError()   { playTone(220, 180, 0.10, "sawtooth"); }
+function soundPrintOk() {
+  playTone(1200, 60, 0.07, "sine");
+  setTimeout(() => playTone(1500, 60, 0.07, "sine"), 70);
+}
 
-// Denominations
-const COINS_ALL = [1, 2, 5, 10, 20, 50, 100, 200];
-const COINS_COARSE = [10, 20, 50, 100, 200];
-const NOTES_BASE = [500, 1000, 2000, 5000];
-const NOTES_BIG  = [10000, 20000, 50000];
-
-// State
-let PRODUCTS = {}; // kommt vom Server (products.json)
-let cart = []; // {ean,name,unitCents,qty}
+// --- State ---
+let cart = []; // {ean, name, unitCents, qty}
 let givenCents = 0;
 let moneyTapHistory = [];
 let moneyCounters = new Map();
 
-// Elements
+// --- Denominations ---
+const COINS_ALL = [1, 2, 5, 10, 20, 50, 100, 200];
+const COINS_COARSE = [10, 20, 50, 100, 200];
+const NOTES_BASE = [500, 1000, 2000, 5000];
+const NOTES_BIG = [10000, 20000, 50000];
+
+// --- Elements ---
 const clockEl = document.getElementById("clock");
 
 const cartBody = document.getElementById("cartBody");
@@ -133,6 +257,9 @@ const clearCartBtn = document.getElementById("clearCartBtn");
 const stornoLastBtn = document.getElementById("stornoLastBtn");
 const newReceiptBtn = document.getElementById("newReceiptBtn");
 const printBtn = document.getElementById("printBtn");
+
+// Optional: bezahlt Button (falls du ihn im HTML hast)
+const paidBtn = document.getElementById("paidBtn") || document.getElementById("btnPaid");
 
 const btnExact = document.getElementById("btnExact");
 const btnUndo = document.getElementById("btnUndo");
@@ -159,10 +286,14 @@ const bigNotesSelect = document.getElementById("bigNotesSelect");
 const confirmBigNotesSelect = document.getElementById("confirmBigNotesSelect");
 const soundSelect = document.getElementById("soundSelect");
 
+// Dezimal Setting (NEU) – wenn du es im HTML noch nicht hast, ignoriert er es einfach
+const decimalsSelect = document.getElementById("decimalsSelect");
+
 // Product admin
 const prodEanInput = document.getElementById("prodEanInput");
 const prodNameInput = document.getElementById("prodNameInput");
 const prodPriceInput = document.getElementById("prodPriceInput");
+const prodCalcCheckBtn = document.getElementById("prodCalcCheckBtn");
 const prodSaveBtn = document.getElementById("prodSaveBtn");
 const prodDeleteBtn = document.getElementById("prodDeleteBtn");
 const prodHint = document.getElementById("prodHint");
@@ -174,74 +305,54 @@ const exportCsvBtn = document.getElementById("exportCsvBtn");
 const importCsvInput = document.getElementById("importCsvInput");
 const csvHint = document.getElementById("csvHint");
 
-// UI messages
+// --- UI messages ---
 function setMsg(text, ok = true) {
+  if (!msgEl) return;
   msgEl.textContent = text || "";
   msgEl.style.color = ok ? "var(--muted)" : "#ffb4b4";
 }
 function setProdHint(text, ok = true) {
+  if (!prodHint) return;
   prodHint.textContent = text || "";
   prodHint.style.color = ok ? "var(--muted)" : "#ffb4b4";
 }
 function setCsvHint(text, ok = true) {
+  if (!csvHint) return;
   csvHint.textContent = text || "";
   csvHint.style.color = ok ? "var(--muted)" : "#ffb4b4";
 }
 
-// Server API: products.json via bridge.py
-async function apiLoadProducts() {
-  const r = await fetch("/api/products", { cache: "no-store" });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  const data = await r.json();
-  return (data && typeof data === "object") ? data : {};
-}
-async function apiSaveProducts(p) {
-  const r = await fetch("/api/products", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(p || {})
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error("Save failed: " + r.status + " " + t);
-  }
-}
-async function apiPrint(payload) {
-  const r = await fetch("/api/print", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload || {})
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error("Print failed: " + r.status + " " + t);
-  }
-}
-
-// Cart computations
+// --- Cart computations ---
 function cartTotalCents() {
   return cart.reduce((sum, it) => sum + it.unitCents * it.qty, 0);
 }
 
-// Cart ops
+// --- Cart ops ---
 function addItemByEan(eanRaw) {
-  const ean = normalizeEan(eanRaw);
-  if (!ean) {
-    setMsg("EAN muss 8 oder 13-stellig sein", false);
+  const code = normalizeEanInputTo13(eanRaw);
+  if (!code) {
+    setMsg("Code muss EAN-8 / 12 / 13-stellig sein", false);
     soundError();
     return;
   }
 
-  const p = PRODUCTS[ean];
+  // Wenn 13-stellig: prüfen
+  if (code.length === 13 && !isValidEan13(code)) {
+    setMsg("EAN-13 Prüfziffer ungültig", false);
+    soundError();
+    return;
+  }
+
+  const p = PRODUCTS[code];
   if (!p) {
-    setMsg(`EAN nicht gefunden: ${ean}`, false);
+    setMsg(`Code nicht gefunden: ${code}`, false);
     soundError();
     return;
   }
 
-  const existing = cart.find(x => x.ean === ean);
+  const existing = cart.find(x => x.ean === code);
   if (existing) existing.qty += 1;
-  else cart.push({ ean, name: p.name, unitCents: p.price, qty: 1 });
+  else cart.push({ ean: code, name: p.name, unitCents: p.price, qty: 1 });
 
   soundScanOk();
   setMsg(`${p.name} hinzugefügt`);
@@ -281,7 +392,7 @@ function newReceipt() {
   render();
 }
 
-// Payment
+// --- Payment ops ---
 function tapMoney(denomCents) {
   denomCents = clampInt(denomCents);
   if (denomCents <= 0) return;
@@ -298,6 +409,7 @@ function tapMoney(denomCents) {
   renderTotalsAndButtons();
   renderMoneyCounters();
 }
+
 function undoLastMoneyTap() {
   const last = moneyTapHistory.pop();
   if (!last) return;
@@ -311,6 +423,7 @@ function undoLastMoneyTap() {
   renderTotalsAndButtons();
   renderMoneyCounters();
 }
+
 function resetGiven() {
   givenCents = 0;
   moneyTapHistory = [];
@@ -318,6 +431,7 @@ function resetGiven() {
   renderTotalsAndButtons();
   renderMoneyCounters();
 }
+
 function setExact() {
   givenCents = cartTotalCents();
   moneyTapHistory = [];
@@ -326,8 +440,8 @@ function setExact() {
   renderMoneyCounters();
 }
 
-// Printing via Pi
-async function printReceiptPi() {
+// --- Printing (Browser print) ---
+function printReceipt() {
   const total = cartTotalCents();
   if (total <= 0) {
     setMsg("Warenkorb ist leer", false);
@@ -344,33 +458,58 @@ async function printReceiptPi() {
   const dateStr = d.toLocaleDateString("de-AT");
   const timeStr = d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
 
-  const items = cart.map(it => ({
+  const lines = cart.map(it => ({
     name: it.name,
     qty: it.qty,
-    sumCents: it.unitCents * it.qty
+    sum: eur(it.unitCents * it.qty),
   }));
 
-  const payload = {
-    title: "KINDERLADEN",
-    datetime: `${dateStr} ${timeStr}`,
-    items,
-    totalCents: total,
-    givenCents: givenCents,
-    changeCents: givenCents - total
-  };
-
-  try {
-    await apiPrint(payload);
-    soundPrintOk();
-    setMsg("Bon gedruckt 🧾");
-  } catch (e) {
-    setMsg("Druckfehler: " + (e.message || e), false);
+  const win = window.open("", "printWin");
+  if (!win) {
+    setMsg("Popup blockiert – bitte erlauben", false);
     soundError();
+    return;
   }
+
+  soundPrintOk();
+
+  win.document.write(`
+<!doctype html><html><head><meta charset="utf-8">
+<title>Bon</title>
+<style>
+  body{font-family:monospace;margin:0;padding:12px;}
+  .c{width:320px;max-width:100%;}
+  .hr{border-top:1px dashed #000;margin:8px 0;}
+  .row{display:flex;justify-content:space-between;gap:10px;}
+  .small{font-size:12px;}
+  h3{margin:0 0 6px 0;text-align:center;}
+</style>
+</head><body>
+<div class="c">
+  <h3>KINDERLADEN</h3>
+  <div class="small">Datum: ${dateStr} &nbsp; ${timeStr}</div>
+  <div class="hr"></div>
+  ${lines.map(l => `
+    <div class="row"><div>${l.name} x${l.qty}</div><div>${l.sum}</div></div>
+  `).join("")}
+  <div class="hr"></div>
+  <div class="row"><div><b>Summe</b></div><div><b>${eur(total)}</b></div></div>
+  <div class="row"><div>Gegeben</div><div>${eur(givenCents)}</div></div>
+  <div class="row"><div>Rückgeld</div><div>${eur(givenCents - total)}</div></div>
+  <div class="hr"></div>
+  <div style="text-align:center">Danke fürs Einkaufen! :)</div>
+</div>
+<script>window.print(); window.close();</script>
+</body></html>
+  `);
+  win.document.close();
+
+  setMsg("Bon gedruckt 🧾");
 }
 
-// Rendering
+// --- Rendering ---
 function renderCart() {
+  if (!cartBody) return;
   cartBody.innerHTML = "";
   cart.forEach((it, idx) => {
     const tr = document.createElement("tr");
@@ -408,15 +547,15 @@ function renderCart() {
   });
 
   const pos = cart.reduce((n, it) => n + it.qty, 0);
-  posCountEl.textContent = String(pos);
+  if (posCountEl) posCountEl.textContent = String(pos);
 }
 
 function renderTotalsAndButtons() {
   const total = cartTotalCents();
-  sumTotalEl.textContent = eur(total);
-  sumBoxValue.textContent = eur(total);
-  givenBoxValue.textContent = eur(givenCents);
-  changeBoxValue.textContent = eur(Math.max(0, givenCents - total));
+  if (sumTotalEl) sumTotalEl.textContent = eur(total);
+  if (sumBoxValue) sumBoxValue.textContent = eur(total);
+  if (givenBoxValue) givenBoxValue.textContent = eur(givenCents);
+  if (changeBoxValue) changeBoxValue.textContent = eur(Math.max(0, givenCents - total));
 
   if (total > 0 && givenCents < total) setMsg("Noch zu wenig Geld 😊", false);
   else if (total > 0 && givenCents === total) setMsg("Perfekt passend ✅", true);
@@ -446,19 +585,29 @@ function makeMoneyBtn(denomCents) {
 }
 
 function renderMoneyButtons() {
+  if (!coinsGrid || !notesGrid) return;
+
   coinsGrid.innerHTML = "";
   notesGrid.innerHTML = "";
 
-  let coins = COINS_ALL;
-  if (settings.centMode === "coarse") coins = COINS_COARSE;
-  if (settings.centMode === "none") coins = [100, 200];
+  // Wenn decimals OFF: keine Cent-Münzen
+  let coins;
+  if (settings.decimals === "off") {
+    coins = [100, 200]; // nur 1€ / 2€ (einfach & kindgerecht)
+  } else {
+    coins = COINS_ALL;
+    if (settings.centMode === "coarse") coins = COINS_COARSE;
+    if (settings.centMode === "none") coins = [100, 200];
+  }
 
   const notes = [...NOTES_BASE, ...(settings.bigNotes === "on" ? NOTES_BIG : [])];
 
-  bigNotesHint.textContent =
-    settings.bigNotes === "on"
-      ? "Große Scheine aktiv ✅"
-      : "Große Scheine aus (100/200/500 versteckt)";
+  if (bigNotesHint) {
+    bigNotesHint.textContent =
+      settings.bigNotes === "on"
+        ? "Große Scheine aktiv ✅"
+        : "Große Scheine aus (100/200/500 versteckt)";
+  }
 
   coins.forEach(c => coinsGrid.appendChild(makeMoneyBtn(c)));
   notes.forEach(c => notesGrid.appendChild(makeMoneyBtn(c)));
@@ -477,8 +626,10 @@ function applyUiMode() {
   document.body.classList.toggle("kid", settings.uiMode === "kid");
 }
 
-// Products list render
+// --- Product list render ---
 function renderProductsList(filter = "") {
+  if (!prodListBody) return;
+
   const f = String(filter || "").trim().toLowerCase();
 
   const entries = Object.entries(PRODUCTS)
@@ -507,9 +658,17 @@ function renderProductsList(filter = "") {
     tr.appendChild(tdP);
 
     tr.onclick = () => {
-      prodEanInput.value = it.ean;
-      prodNameInput.value = it.name;
-      prodPriceInput.value = (it.price / 100).toFixed(2).replace(".", ",");
+      if (prodEanInput) prodEanInput.value = it.ean;
+      if (prodNameInput) prodNameInput.value = it.name;
+
+      // Anzeige im Feld:
+      if (prodPriceInput) {
+        if (settings.decimals === "off") {
+          prodPriceInput.value = String(Math.round(it.price / 100));
+        } else {
+          prodPriceInput.value = (it.price / 100).toFixed(2).replace(".", ",");
+        }
+      }
       setProdHint("Artikel geladen. Du kannst ihn ändern und speichern.");
     };
 
@@ -530,100 +689,158 @@ function render() {
   }
 }
 
-// Admin modal
+// --- Admin modal logic ---
 function openAdmin() {
+  if (!adminBackdrop) return;
   adminBackdrop.classList.remove("hidden");
-  adminLocked.classList.remove("hidden");
-  adminUnlocked.classList.add("hidden");
-  pinInput.value = "";
-  pinInput.focus();
+  adminLocked?.classList.remove("hidden");
+  adminUnlocked?.classList.add("hidden");
+  if (pinInput) pinInput.value = "";
+  pinInput?.focus();
 }
-function closeAdminModal() { adminBackdrop.classList.add("hidden"); }
+
+function closeAdminModal() {
+  adminBackdrop?.classList.add("hidden");
+}
+
 function loginAdmin() {
+  if (!pinInput) return;
   if (pinInput.value === ADMIN_PIN) {
-    adminLocked.classList.add("hidden");
-    adminUnlocked.classList.remove("hidden");
+    adminLocked?.classList.add("hidden");
+    adminUnlocked?.classList.remove("hidden");
 
-    uiModeSelect.value = settings.uiMode;
-    centModeSelect.value = settings.centMode;
-    bigNotesSelect.value = settings.bigNotes;
-    confirmBigNotesSelect.value = settings.confirmBigNotes;
-    soundSelect.value = settings.sound;
+    if (uiModeSelect) uiModeSelect.value = settings.uiMode;
+    if (centModeSelect) centModeSelect.value = settings.centMode;
+    if (bigNotesSelect) bigNotesSelect.value = settings.bigNotes;
+    if (confirmBigNotesSelect) confirmBigNotesSelect.value = settings.confirmBigNotes;
+    if (soundSelect) soundSelect.value = settings.sound;
+    if (decimalsSelect) decimalsSelect.value = settings.decimals;
 
-    setProdHint("Bereit. EAN(8/13) scannen, Name + Preis eingeben, speichern.");
-    setCsvHint("CSV-Format: ean;name;preis");
     renderProductsList("");
+    setProdHint("Bereit. Code scannen/eintippen, Name + Preis eingeben, speichern.");
+    setCsvHint("CSV-Format: ean;name;preis");
   } else {
     alert("Falscher PIN");
     pinInput.focus();
   }
 }
+
 function logoutAdmin() {
-  adminLocked.classList.remove("hidden");
-  adminUnlocked.classList.add("hidden");
-  pinInput.value = "";
+  adminLocked?.classList.remove("hidden");
+  adminUnlocked?.classList.add("hidden");
+  if (pinInput) pinInput.value = "";
 }
+
 function saveAdminSettings() {
-  settings.uiMode = uiModeSelect.value;
-  settings.centMode = centModeSelect.value;
-  settings.bigNotes = bigNotesSelect.value;
-  settings.confirmBigNotes = confirmBigNotesSelect.value;
-  settings.sound = soundSelect.value;
+  if (uiModeSelect) settings.uiMode = uiModeSelect.value;
+  if (centModeSelect) settings.centMode = centModeSelect.value;
+  if (bigNotesSelect) settings.bigNotes = bigNotesSelect.value;
+  if (confirmBigNotesSelect) settings.confirmBigNotes = confirmBigNotesSelect.value;
+  if (soundSelect) settings.sound = soundSelect.value;
+  if (decimalsSelect) settings.decimals = decimalsSelect.value;
 
   saveSettings(settings);
   render();
   alert("Gespeichert ✅");
 }
 
-// Admin products
-async function adminSaveProduct() {
-  const ean = normalizeEan(prodEanInput.value);
-  if (!ean) { setProdHint("EAN muss 8 oder 13-stellig sein", false); soundError(); return; }
+// --- Product admin actions ---
+function adminCalcCheckDigit() {
+  if (!prodEanInput) return;
+  const digits = onlyDigits(prodEanInput.value);
 
-  const name = String(prodNameInput.value || "").trim();
+  // EAN-8: erlauben wir ohne Prüfziffer-berechnen
+  if (digits.length === 8) {
+    setProdHint("EAN-8 erkannt ✅ (wird so gespeichert)");
+    return;
+  }
+
+  if (digits.length === 13) {
+    if (isValidEan13(digits)) setProdHint("EAN-13 ist gültig ✅");
+    else { setProdHint("EAN-13 Prüfziffer ist ungültig ❌", false); soundError(); }
+    return;
+  }
+
+  if (digits.length !== 12) {
+    setProdHint("Bitte 8 / 12 / 13 Stellen eingeben", false);
+    soundError();
+    return;
+  }
+
+  const full = normalizeEanInputTo13(digits);
+  prodEanInput.value = full || digits;
+  setProdHint(`Prüfziffer berechnet: ${prodEanInput.value}`);
+}
+
+async function adminSaveProduct() {
+  const code = normalizeEanInputTo13(prodEanInput?.value || "");
+  if (!code) { setProdHint("Code muss 8 / 12 / 13-stellig sein", false); soundError(); return; }
+
+  if (code.length === 13 && !isValidEan13(code)) {
+    setProdHint("EAN-13 Prüfziffer ist ungültig", false);
+    soundError();
+    return;
+  }
+
+  const name = String(prodNameInput?.value || "").trim();
   if (!name) { setProdHint("Artikelname fehlt", false); soundError(); return; }
 
-  const priceCents = parseEuroToCents(prodPriceInput.value);
+  const priceCents = parseEuroToCents(prodPriceInput?.value || "");
   if (priceCents === null) { setProdHint("Preis ungültig (z. B. 1,20)", false); soundError(); return; }
 
-  PRODUCTS[ean] = { name, price: priceCents };
+  PRODUCTS[code] = { name, price: priceCents };
 
-  try {
-    await apiSaveProducts(PRODUCTS);
-    setProdHint(`Gespeichert ✅ (${ean})`);
-    renderProductsList(prodSearchInput?.value || "");
-  } catch (e) {
-    setProdHint("Speichern am Pi fehlgeschlagen ❌ " + (e.message || e), false);
+  const ok = await saveProductsToServer();
+  if (!ok) {
+    setProdHint("Speichern fehlgeschlagen (Server nicht erreichbar)", false);
     soundError();
+    return;
   }
+
+  if (prodEanInput) prodEanInput.value = code;
+  setProdHint(`Gespeichert ✅ (${code})`);
+  renderProductsList(prodSearchInput?.value || "");
+  render(); // damit Kassa sofort aktuelle Preise hat
 }
 
 async function adminDeleteProduct() {
-  const ean = normalizeEan(prodEanInput.value);
-  if (!ean || !PRODUCTS[ean]) { setProdHint("Gültige EAN zum Löschen eingeben", false); soundError(); return; }
+  const code = normalizeEanInputTo13(prodEanInput?.value || "");
+  if (!code) { setProdHint("Gültigen Code zum Löschen eingeben", false); soundError(); return; }
 
-  const ok = confirm(`Artikel ${ean} wirklich löschen?`);
+  if (code.length === 13 && !isValidEan13(code)) {
+    setProdHint("EAN-13 ungültig", false);
+    soundError();
+    return;
+  }
+
+  if (!PRODUCTS[code]) { setProdHint("Code nicht vorhanden", false); soundError(); return; }
+
+  const ok = confirm(`Artikel ${code} wirklich löschen?`);
   if (!ok) return;
 
-  delete PRODUCTS[ean];
+  delete PRODUCTS[code];
 
-  try {
-    await apiSaveProducts(PRODUCTS);
-    setProdHint("Gelöscht ✅");
-    prodNameInput.value = "";
-    prodPriceInput.value = "";
-    renderProductsList(prodSearchInput?.value || "");
-  } catch (e) {
-    setProdHint("Löschen am Pi fehlgeschlagen ❌ " + (e.message || e), false);
+  const saved = await saveProductsToServer();
+  if (!saved) {
+    setProdHint("Löschen fehlgeschlagen (Server nicht erreichbar)", false);
     soundError();
+    return;
   }
+
+  setProdHint("Gelöscht ✅");
+  if (prodNameInput) prodNameInput.value = "";
+  if (prodPriceInput) prodPriceInput.value = "";
+  renderProductsList(prodSearchInput?.value || "");
+  render();
 }
 
-// CSV
+// --- CSV Export/Import (arbeitet auf PRODUCTS + speichert via Server) ---
 function exportProductsToCsv() {
   const rows = [["ean", "name", "preis"]];
   Object.entries(PRODUCTS).forEach(([ean, p]) => {
-    const price = (p.price / 100).toFixed(2).replace(".", ",");
+    const price = settings.decimals === "off"
+      ? String(Math.round(p.price / 100))
+      : (p.price / 100).toFixed(2).replace(".", ",");
     rows.push([ean, p.name, price]);
   });
 
@@ -640,7 +857,7 @@ function exportProductsToCsv() {
   setCsvHint("Export erfolgreich ✅");
 }
 
-function importProductsFromCsv(file) {
+async function importProductsFromCsv(file) {
   const reader = new FileReader();
   reader.onload = async () => {
     const text = String(reader.result || "");
@@ -654,115 +871,147 @@ function importProductsFromCsv(file) {
       if (!cols.length) continue;
       if (cols[0].toLowerCase() === "ean") continue;
 
-      const ean = normalizeEan(cols[0]);
+      const code = normalizeEanInputTo13(cols[0]);
       const name = cols[1];
       const priceCents = parseEuroToCents(cols[2]);
 
-      if (!ean || !name || priceCents === null) { skipped++; continue; }
-      PRODUCTS[ean] = { name, price: priceCents };
+      if (!code || !name || priceCents === null) {
+        skipped++;
+        continue;
+      }
+      if (code.length === 13 && !isValidEan13(code)) {
+        skipped++;
+        continue;
+      }
+
+      PRODUCTS[code] = { name, price: priceCents };
       added++;
     }
 
-    try {
-      await apiSaveProducts(PRODUCTS);
-      renderProductsList(prodSearchInput?.value || "");
-      setCsvHint(`Import fertig ✅ ${added} hinzugefügt, ${skipped} übersprungen`);
-    } catch (e) {
-      setCsvHint("Import: Speichern am Pi fehlgeschlagen ❌ " + (e.message || e), false);
+    const ok = await saveProductsToServer();
+    if (!ok) {
+      setCsvHint("Import fehlgeschlagen (Server nicht erreichbar)", false);
       soundError();
+      return;
     }
+
+    renderProductsList(prodSearchInput?.value || "");
+    render();
+    setCsvHint(`Import fertig ✅ ${added} hinzugefügt, ${skipped} übersprungen`);
   };
 
   reader.readAsText(file, "UTF-8");
 }
 
-// Landscape overlay
-function enforceLandscape() {
-  const overlay = document.getElementById("rotateOverlay");
-  if (!overlay) return;
-  const isPortrait = window.matchMedia("(orientation: portrait)").matches;
-  overlay.classList.toggle("hidden", !isPortrait);
+// --- Optional: Bezahlt (kindgerecht) ---
+function markPaid() {
+  const total = cartTotalCents();
+  if (total <= 0) {
+    setMsg("Warenkorb ist leer", false);
+    soundError();
+    return;
+  }
+  if (givenCents < total) {
+    setMsg("Noch zu wenig Geld 😊", false);
+    soundError();
+    return;
+  }
+  setMsg("BEZAHLT ✅", true);
 }
-window.addEventListener("resize", enforceLandscape);
-window.addEventListener("orientationchange", enforceLandscape);
 
-// Events
+// --- SSE Scanner Bridge ---
+function setupScannerSSE() {
+  try {
+    const es = new EventSource("/events");
+
+    es.addEventListener("hello", () => {
+      console.log("Scanner-Bridge ready");
+    });
+
+    es.onmessage = (ev) => {
+      const code = String(ev.data || "").replace(/\D/g, "");
+      if (!code) return;
+
+      if (scanInput) scanInput.value = code;
+
+      // Auto hinzufügen:
+      addItemByEan(code);
+
+      // Input sauber machen:
+      if (scanInput) scanInput.value = "";
+    };
+
+    es.onerror = () => {
+      // reconnect passiert automatisch
+    };
+  } catch (e) {
+    console.error("SSE not supported?", e);
+  }
+}
+
+// --- Events / Hooks ---
 document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
 document.addEventListener("keydown", unlockAudioOnce, { once: true });
 
-adminBtn.onclick = openAdmin;
-closeAdmin.onclick = closeAdminModal;
-adminBackdrop.addEventListener("click", (e) => { if (e.target === adminBackdrop) closeAdminModal(); });
+adminBtn && (adminBtn.onclick = openAdmin);
+closeAdmin && (closeAdmin.onclick = closeAdminModal);
 
-pinLoginBtn.onclick = loginAdmin;
-pinInput.addEventListener("keydown", (e) => { if (e.key === "Enter") loginAdmin(); });
+adminBackdrop && adminBackdrop.addEventListener("click", (e) => {
+  if (e.target === adminBackdrop) closeAdminModal();
+});
 
-logoutAdminBtn.onclick = logoutAdmin;
-saveSettingsBtn.onclick = saveAdminSettings;
+pinLoginBtn && (pinLoginBtn.onclick = loginAdmin);
+pinInput && pinInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") loginAdmin();
+});
 
-clearCartBtn.onclick = clearCart;
-stornoLastBtn.onclick = stornoLast;
-newReceiptBtn.onclick = newReceipt;
+logoutAdminBtn && (logoutAdminBtn.onclick = logoutAdmin);
+saveSettingsBtn && (saveSettingsBtn.onclick = saveAdminSettings);
 
-btnExact.onclick = setExact;
-btnUndo.onclick = undoLastMoneyTap;
-btnResetGiven.onclick = resetGiven;
+clearCartBtn && (clearCartBtn.onclick = clearCart);
+stornoLastBtn && (stornoLastBtn.onclick = stornoLast);
+newReceiptBtn && (newReceiptBtn.onclick = newReceipt);
 
-printBtn.onclick = printReceiptPi;
+btnExact && (btnExact.onclick = setExact);
+btnUndo && (btnUndo.onclick = undoLastMoneyTap);
+btnResetGiven && (btnResetGiven.onclick = resetGiven);
 
-addByEanBtn.onclick = () => { addItemByEan(scanInput.value); scanInput.value = ""; };
-scanInput.addEventListener("keydown", (e) => {
+printBtn && (printBtn.onclick = printReceipt);
+paidBtn && (paidBtn.onclick = markPaid);
+
+addByEanBtn && (addByEanBtn.onclick = () => addItemByEan(scanInput?.value || ""));
+scanInput && scanInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     addItemByEan(scanInput.value);
     scanInput.value = "";
   }
 });
 
-prodSaveBtn.onclick = adminSaveProduct;
-prodDeleteBtn.onclick = adminDeleteProduct;
+prodCalcCheckBtn && (prodCalcCheckBtn.onclick = adminCalcCheckDigit);
+prodSaveBtn && (prodSaveBtn.onclick = adminSaveProduct);
+prodDeleteBtn && (prodDeleteBtn.onclick = adminDeleteProduct);
 
-prodSearchInput.addEventListener("input", () => renderProductsList(prodSearchInput.value));
+prodSearchInput && prodSearchInput.addEventListener("input", () => {
+  renderProductsList(prodSearchInput.value);
+});
 
-exportCsvBtn.onclick = exportProductsToCsv;
-importCsvInput.onchange = () => {
+exportCsvBtn && (exportCsvBtn.onclick = exportProductsToCsv);
+importCsvInput && (importCsvInput.onchange = () => {
   if (importCsvInput.files && importCsvInput.files.length > 0) {
     importProductsFromCsv(importCsvInput.files[0]);
     importCsvInput.value = "";
   }
-};
+});
 
-// Clock
-setInterval(() => (clockEl.textContent = nowClock()), 500);
-clockEl.textContent = nowClock();
+// clock
+if (clockEl) {
+  setInterval(() => (clockEl.textContent = nowClock()), 500);
+  clockEl.textContent = nowClock();
+}
 
-// SSE scanner bridge
-(function setupScannerSSE() {
-  try {
-    const es = new EventSource("/events");
-    es.addEventListener("hello", () => console.log("Scanner-Bridge ready"));
-    es.onmessage = (ev) => {
-      const code = normalizeEan(ev.data);
-      if (!code) return;
-      const input = document.getElementById("scanInput");
-      if (input) input.value = code;
-      addItemByEan(code);
-      if (input) input.value = "";
-    };
-  } catch (e) {
-    console.error("SSE not supported?", e);
-  }
-})();
-
-// INIT: load products from Pi (products.json)
-(async () => {
-  try {
-    PRODUCTS = await apiLoadProducts();
-    setMsg(Object.keys(PRODUCTS).length ? "Produkte geladen ✅" : "Noch keine Produkte – bitte im Admin anlegen 🙂", true);
-  } catch (e) {
-    PRODUCTS = {};
-    setMsg("Produkte konnten nicht geladen werden ❌", false);
-    console.warn(e);
-  }
+// --- INIT ---
+(async function init() {
+  await loadProductsFromServer();
   render();
-  enforceLandscape();
+  setupScannerSSE();
 })();
