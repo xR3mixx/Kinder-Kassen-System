@@ -71,6 +71,8 @@ ausschließlich zur Deckung von:
 
 Die Software selbst bleibt **kostenlos und frei zugänglich**.
 
+Bei bedarf bitte auf Discord melden
+
 ---
 
 ## ⚖️ Lizenz
@@ -102,3 +104,20 @@ Kein Abo.
 Es ist ein Lernprojekt – entstanden für Kinder.
 
 Und genau so soll es bleiben.
+
+---
+
+## 💬 Community & Support (Discord)
+
+Für Austausch, Hilfe und Feedback rund um **KKS – Kinder-Kassensystem** gibt es einen offiziellen Discord-Server.
+
+Dort findest du:
+- Hilfe bei Installation & Hardware (Scanner, Bondrucker, Raspberry Pi)
+- Austausch mit anderen Nutzern
+- Infos zu Updates & Releases
+- Raum für Ideen und Feedback (kindgerecht & einfach)
+
+👉 **Discord beitreten:**  
+https://discord.gg/xrQfCEfx
+
+Der Discord dient als zentrale Anlaufstelle für die Community.
