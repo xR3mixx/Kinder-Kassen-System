@@ -17,8 +17,8 @@ SCANNER_BAUD = 9600
 PRINTER_BAUD = 19200
 
 # Stabiler Match über by-id (wird automatisch gefunden)
-SCANNER_MATCH = "Silicon_Labs_CP2102"
-PRINTER_MATCH = "FTDI_USB_Serial_Converter"
+SCANNER_MATCH = "FTDI_USB_Serial_Converter"
+PRINTER_MATCH = "Silicon_Labs_CP2102"
 
 # Fallback falls by-id nicht existiert (z.B. sehr früher Boot)
 SCANNER_FALLBACK = "/dev/ttyUSB1"
