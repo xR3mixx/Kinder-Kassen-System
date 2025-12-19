@@ -1,45 +1,30 @@
 // =====================
-// Kinderkassa – Web App
+// KKS – Kinderkassa Web App (v1.1.2)
+// - Scanner via SSE (/events)
+// - EAN-8 + EAN-13
+// - Produkte laden aus products.json (+ localStorage Overrides)
+// - BEZAHLT: druckt echten Bon (/print) und startet neuen Bon
+// - BON DRUCKEN: druckt nur (ohne neuen Bon)
 // =====================
 
-// --- Admin PIN (hier ändern) ---
+// --- Admin PIN ---
 const ADMIN_PIN = "1234";
 
-// --- Default Produkte (Fallback, falls Server/JSON nicht erreichbar) ---
-const DEFAULT_PRODUCTS = {
-  "2000000000017": { name: "Apfel", price: 50 },
-  "2000000000024": { name: "Banane", price: 60 },
-  "2000000000031": { name: "Orange", price: 70 },
-  "2000000000048": { name: "Milch 1 L", price: 120 },
-  "2000000000055": { name: "Kakao", price: 150 },
-  "2000000000062": { name: "Wasser", price: 80 },
-  "2000000000079": { name: "Brot", price: 110 },
-  "2000000000086": { name: "Semmel", price: 40 },
-  "2000000000093": { name: "Käse", price: 180 },
-  "2000000000109": { name: "Wurst", price: 200 },
-  "2000000000116": { name: "Schokolade", price: 100 },
-  "2000000000123": { name: "Gummibärchen", price: 90 },
-  "2000000000130": { name: "Eis", price: 120 },
-  "2000000000147": { name: "Zahnbürste", price: 130 },
-  "2000000000154": { name: "Seife", price: 90 },
-  "2000000000161": { name: "Klopapier", price: 170 },
-  "2000000000178": { name: "Spielzeugauto", price: 350 },
-  "2000000000185": { name: "Puppe", price: 500 },
-  "2000000000192": { name: "Ball", price: 250 },
-  "2000000000208": { name: "Buch", price: 400 }
-};
+// --- Dateiname für Produkte ---
+const PRODUCTS_JSON_URL = "products.json"; // muss im selben Ordner liegen
 
-// --- Settings persisted (localStorage nur für UI-Settings, NICHT Produkte) ---
-const LS_SETTINGS = "kinderkassa_settings";
+// --- localStorage keys ---
+const LS_SETTINGS = "kks_settings";
+const LS_PRODUCTS_OVERRIDES = "kks_products_overrides";
 
-// --- Settings Defaults ---
+// --- Settings (persisted) ---
 const defaultSettings = {
-  uiMode: "standard",      // "standard" | "kid"
-  centMode: "all",         // "all" | "coarse" | "none"
-  bigNotes: "off",         // "on" | "off"
-  confirmBigNotes: "on",   // "on" | "off"
-  sound: "on",             // "on" | "off"
-  decimals: "on"           // "on" | "off"  <-- NEU
+  uiMode: "standard",     // "standard" | "kid"
+  centMode: "all",        // "all" | "coarse" | "none"
+  bigNotes: "off",        // "on" | "off"
+  confirmBigNotes: "on",  // "on" | "off"
+  sound: "on",            // "on" | "off"
+  decimals: "on",         // "on" | "off"  ✅ Dezimalzahlen An/Aus
 };
 
 function loadSettings() {
@@ -55,37 +40,18 @@ function saveSettings(s) {
   localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
 }
 
-// --- Products (werden vom Server geladen/gespeichert) ---
-let PRODUCTS = { ...DEFAULT_PRODUCTS };
-
-async function loadProductsFromServer() {
+// --- Product overrides persisted ---
+function loadOverrides() {
   try {
-    const res = await fetch("/products", { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    // Falls die JSON leer ist, trotzdem fallback behalten
-    PRODUCTS = { ...DEFAULT_PRODUCTS, ...(data || {}) };
-    console.log("[products] loaded:", Object.keys(PRODUCTS).length);
-  } catch (e) {
-    console.warn("[products] load failed, using defaults:", e);
-    PRODUCTS = { ...DEFAULT_PRODUCTS };
+    const raw = localStorage.getItem(LS_PRODUCTS_OVERRIDES);
+    if (!raw) return {};
+    return JSON.parse(raw) || {};
+  } catch {
+    return {};
   }
 }
-
-async function saveProductsToServer() {
-  try {
-    const res = await fetch("/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(PRODUCTS)
-    });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    console.log("[products] saved");
-    return true;
-  } catch (e) {
-    console.error("[products] save failed:", e);
-    return false;
-  }
+function saveOverrides(o) {
+  localStorage.setItem(LS_PRODUCTS_OVERRIDES, JSON.stringify(o));
 }
 
 // --- Helpers ---
@@ -97,6 +63,15 @@ function clampInt(n) {
   if (!Number.isFinite(n)) return 0;
   return Math.trunc(n);
 }
+function eur(cents) {
+  if (settings.decimals === "off") {
+    // nur ganze € anzeigen
+    const euros = Math.round(cents / 100);
+    return `${euros} €`;
+  }
+  const v = (cents / 100).toFixed(2).replace(".", ",");
+  return `${v} €`;
+}
 function nowClock() {
   const d = new Date();
   const hh = String(d.getHours()).padStart(2, "0");
@@ -107,34 +82,20 @@ function parseEuroToCents(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
 
-  // Wenn Dezimal AUS: interpretieren wir "3" als 3,00 €
+  // Wenn Dezimal AUS: nur ganze Zahlen erlauben (1, 2, 10)
   if (settings.decimals === "off") {
-    const num = Number(raw.replace(",", "."));
-    if (!Number.isFinite(num) || num < 0) return null;
-    return Math.round(num * 100); // ganze Euro *100
+    const n = Number(raw.replace(/\s/g, ""));
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.round(n * 100);
   }
 
-  // Normal: 1,20 oder 1.20
   const norm = raw.replace(/\s/g, "").replace(",", ".");
   const num = Number(norm);
   if (!Number.isFinite(num) || num < 0) return null;
   return Math.round(num * 100);
 }
 
-// --- Anzeigeformat Euro (respektiert decimals) ---
-function eur(cents) {
-  const c = clampInt(cents);
-
-  if (settings.decimals === "off") {
-    const euros = Math.round(c / 100);
-    return `${euros} €`;
-  }
-
-  const v = (c / 100).toFixed(2).replace(".", ",");
-  return `${v} €`;
-}
-
-// --- EAN-13 helpers ---
+// --- EAN helpers (EAN-13 + EAN-8) ---
 function ean13CheckDigit(base12) {
   const s = onlyDigits(base12);
   if (s.length !== 12) return null;
@@ -154,24 +115,52 @@ function isValidEan13(ean13) {
   if (cd === null) return false;
   return cd === parseInt(s[12], 10);
 }
-function normalizeEanInputTo13(eanInput) {
-  const s = onlyDigits(eanInput);
 
-  // EAN-13
+function ean8CheckDigit(base7) {
+  const s = onlyDigits(base7);
+  if (s.length !== 7) return null;
+  // weights: 3,1,3,1,3,1,3 on positions 0..6
+  let sum = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = parseInt(s[i], 10);
+    sum += (i % 2 === 0) ? (3 * d) : d;
+  }
+  const mod = sum % 10;
+  return (10 - mod) % 10;
+}
+function isValidEan8(ean8) {
+  const s = onlyDigits(ean8);
+  if (s.length !== 8) return false;
+  const base7 = s.slice(0, 7);
+  const cd = ean8CheckDigit(base7);
+  if (cd === null) return false;
+  return cd === parseInt(s[7], 10);
+}
+
+// normalize: akzeptiert 7/8/12/13 → gibt 8 oder 13 zurück
+function normalizeCode(codeInput) {
+  const s = onlyDigits(codeInput);
+
   if (s.length === 13) return s;
-
-  // 12 -> berechne Prüfziffer
   if (s.length === 12) {
     const cd = ean13CheckDigit(s);
     return cd === null ? null : (s + String(cd));
   }
 
-  // EAN-8 erlauben wir fürs SCANNEN (optional):
-  // -> Wir lassen EAN-8 einfach als "8-stellig" durchgehen, ABER:
-  //    Produkte müssen dann exakt als 8-stellig im PRODUCTS stehen.
   if (s.length === 8) return s;
+  if (s.length === 7) {
+    const cd = ean8CheckDigit(s);
+    return cd === null ? null : (s + String(cd));
+  }
 
   return null;
+}
+
+function isValidCode(code) {
+  const s = onlyDigits(code);
+  if (s.length === 13) return isValidEan13(s);
+  if (s.length === 8) return isValidEan8(s);
+  return false;
 }
 
 // -----------------
@@ -179,7 +168,6 @@ function normalizeEanInputTo13(eanInput) {
 // -----------------
 let audioCtx = null;
 let audioUnlocked = false;
-let settings = loadSettings();
 
 function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -228,7 +216,13 @@ function soundPrintOk() {
 }
 
 // --- State ---
-let cart = []; // {ean, name, unitCents, qty}
+let settings = loadSettings();
+
+let PRODUCTS_BASE = {};         // aus products.json
+let PRODUCTS_OVERRIDES = loadOverrides(); // admin changes
+let PRODUCTS = {};              // merged
+
+let cart = []; // {code, name, unitCents, qty}
 let givenCents = 0;
 let moneyTapHistory = [];
 let moneyCounters = new Map();
@@ -258,16 +252,16 @@ const stornoLastBtn = document.getElementById("stornoLastBtn");
 const newReceiptBtn = document.getElementById("newReceiptBtn");
 const printBtn = document.getElementById("printBtn");
 
-// Optional: bezahlt Button (falls du ihn im HTML hast)
-const paidBtn = document.getElementById("paidBtn") || document.getElementById("btnPaid");
-
+// Buttons in Payment area
 const btnExact = document.getElementById("btnExact");
 const btnUndo = document.getElementById("btnUndo");
 const btnResetGiven = document.getElementById("btnResetGiven");
+const btnPaid = document.getElementById("btnPaid"); // ✅ BEZAHLT Button (muss im HTML existieren)
 
 const coinsGrid = document.getElementById("coinsGrid");
 const notesGrid = document.getElementById("notesGrid");
 const bigNotesHint = document.getElementById("bigNotesHint");
+const scannerStateEl = document.getElementById("scannerState"); // optional
 
 // Admin modal
 const adminBtn = document.getElementById("adminBtn");
@@ -285,9 +279,7 @@ const centModeSelect = document.getElementById("centModeSelect");
 const bigNotesSelect = document.getElementById("bigNotesSelect");
 const confirmBigNotesSelect = document.getElementById("confirmBigNotesSelect");
 const soundSelect = document.getElementById("soundSelect");
-
-// Dezimal Setting (NEU) – wenn du es im HTML noch nicht hast, ignoriert er es einfach
-const decimalsSelect = document.getElementById("decimalsSelect");
+const decimalsSelect = document.getElementById("decimalsSelect"); // ✅ Dezimal An/Aus (muss im HTML existieren)
 
 // Product admin
 const prodEanInput = document.getElementById("prodEanInput");
@@ -307,7 +299,6 @@ const csvHint = document.getElementById("csvHint");
 
 // --- UI messages ---
 function setMsg(text, ok = true) {
-  if (!msgEl) return;
   msgEl.textContent = text || "";
   msgEl.style.color = ok ? "var(--muted)" : "#ffb4b4";
 }
@@ -322,23 +313,73 @@ function setCsvHint(text, ok = true) {
   csvHint.style.color = ok ? "var(--muted)" : "#ffb4b4";
 }
 
+function setScannerState(ok) {
+  if (!scannerStateEl) return;
+  scannerStateEl.textContent = ok ? "Scanner verbunden ✅" : "Scanner getrennt ❌";
+}
+
+// --- Products loading/merge ---
+function mergeProducts() {
+  PRODUCTS = { ...PRODUCTS_BASE, ...PRODUCTS_OVERRIDES };
+}
+
+async function loadProductsJson() {
+  try {
+    const res = await fetch(PRODUCTS_JSON_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+
+    // Erwartet: { "EAN": { "name":"", "price": 50 } } oder price in Cent
+    // Wenn price als Euro-String kommt: wir wandeln.
+    const normalized = {};
+    for (const [k, v] of Object.entries(data || {})) {
+      const code = normalizeCode(k);
+      if (!code) continue;
+
+      const name = String(v?.name ?? "").trim();
+      if (!name) continue;
+
+      let priceCents = null;
+
+      if (typeof v?.price === "number") {
+        // wenn Zahl: annehmen Cent wenn > 20 oder wenn integer? -> wir nehmen Cent, wenn ganzzahlig.
+        // Empfohlen: price in Cent
+        priceCents = Math.round(v.price);
+      } else {
+        // wenn String: Euro
+        priceCents = parseEuroToCents(v?.price);
+      }
+      if (priceCents === null) continue;
+
+      normalized[code] = { name, price: priceCents };
+    }
+
+    PRODUCTS_BASE = normalized;
+    mergeProducts();
+    return true;
+  } catch (e) {
+    // fallback: leer lassen, Overrides bleiben
+    PRODUCTS_BASE = {};
+    mergeProducts();
+    return false;
+  }
+}
+
 // --- Cart computations ---
 function cartTotalCents() {
   return cart.reduce((sum, it) => sum + it.unitCents * it.qty, 0);
 }
 
 // --- Cart ops ---
-function addItemByEan(eanRaw) {
-  const code = normalizeEanInputTo13(eanRaw);
+function addItemByCode(codeRaw) {
+  const code = normalizeCode(codeRaw);
   if (!code) {
-    setMsg("Code muss EAN-8 / 12 / 13-stellig sein", false);
+    setMsg("Code muss 7/8 oder 12/13-stellig sein", false);
     soundError();
     return;
   }
-
-  // Wenn 13-stellig: prüfen
-  if (code.length === 13 && !isValidEan13(code)) {
-    setMsg("EAN-13 Prüfziffer ungültig", false);
+  if (!isValidCode(code)) {
+    setMsg("Prüfziffer ungültig (EAN-8/EAN-13)", false);
     soundError();
     return;
   }
@@ -350,9 +391,9 @@ function addItemByEan(eanRaw) {
     return;
   }
 
-  const existing = cart.find(x => x.ean === code);
+  const existing = cart.find(x => x.code === code);
   if (existing) existing.qty += 1;
-  else cart.push({ ean: code, name: p.name, unitCents: p.price, qty: 1 });
+  else cart.push({ code, name: p.name, unitCents: p.price, qty: 1 });
 
   soundScanOk();
   setMsg(`${p.name} hinzugefügt`);
@@ -440,8 +481,116 @@ function setExact() {
   renderMoneyCounters();
 }
 
-// --- Printing (Browser print) ---
-function printReceipt() {
+// =====================
+// DRUCKEN (REAL PRINTER)
+// =====================
+
+// -> schickt Text an bridge.py (/print). Bridge macht CRLF + Papier-Vorlauf.
+async function printToRealPrinter(receiptText) {
+  try {
+    const res = await fetch("/print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: receiptText })
+    });
+
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    return !!(data && data.ok);
+  } catch (e) {
+    return false;
+  }
+}
+
+// Baut den Bon-Text aus dem aktuellen Warenkorb
+function buildReceiptText() {
+  const total = cartTotalCents();
+
+  const d = new Date();
+  const dateStr = d.toLocaleDateString("de-AT");
+  const timeStr = d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
+
+  const lines = [];
+  lines.push("KINDERLADEN");
+  lines.push(`${dateStr} ${timeStr}`);
+  lines.push("--------------------------------");
+
+  cart.forEach(it => {
+    // kurze, robuste Zeile: "Name x2   1,00 €"
+    const sum = eur(it.unitCents * it.qty);
+    lines.push(`${it.name} x${it.qty}  ${sum}`);
+  });
+
+  lines.push("--------------------------------");
+  lines.push(`SUMME:   ${eur(total)}`);
+  lines.push(`GEGEBEN: ${eur(givenCents)}`);
+  lines.push(`RUECKG.: ${eur(givenCents - total)}`);
+  lines.push("--------------------------------");
+  lines.push("Danke fürs Einkaufen! :)");
+
+  // Bridge macht CRLF + extra Vorschub,
+  // hier bleiben wir simpel bei \n
+  return lines.join("\n");
+}
+
+// Manuell: "BON DRUCKEN" druckt nur – startet NICHT automatisch neu
+async function manualPrint() {
+  const total = cartTotalCents();
+  if (total <= 0) {
+    setMsg("Warenkorb ist leer", false);
+    soundError();
+    return;
+  }
+
+  setMsg("Drucke Bon…");
+  const ok = await printToRealPrinter(buildReceiptText());
+
+  if (!ok) {
+    setMsg("Drucker nicht erreichbar – Kabel/Port prüfen", false);
+    soundError();
+    return;
+  }
+
+  soundPrintOk();
+  setMsg("Bon gedruckt 🧾");
+}
+
+ // ✅ BEZAHLT: prüfen → drucken → NEUER BON
+async function payAndPrint() {
+  const total = cartTotalCents();
+
+  if (total <= 0) {
+    setMsg("Warenkorb ist leer", false);
+    soundError();
+    return;
+  }
+
+  if (givenCents < total) {
+    setMsg("Noch zu wenig Geld 😊", false);
+    soundError();
+    return;
+  }
+
+  setMsg("Bezahlt ✅ Drucke Bon…");
+
+  // 🔴 WICHTIG: await + Funktionsaufruf IN EINER ZEILE
+  const ok = await printToRealPrinter(buildReceiptText());
+
+  if (!ok) {
+    setMsg("Drucker nicht erreichbar – Kabel/Port prüfen", false);
+    soundError();
+    return;
+  }
+
+  soundPrintOk();
+  setMsg("Bon gedruckt 🧾 Neuer Bon gestartet ✅");
+
+  // ✅ wirklich neuer Bon
+  newReceipt();
+}
+
+// ✅ BON DRUCKEN: nur drucken
+async function manualPrint() {
   const total = cartTotalCents();
   if (total <= 0) {
     setMsg("Warenkorb ist leer", false);
@@ -454,62 +603,47 @@ function printReceipt() {
     return;
   }
 
-  const d = new Date();
-  const dateStr = d.toLocaleDateString("de-AT");
-  const timeStr = d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
+  setMsg("Drucke Bon…");
+  const ok = await printToRealPrinter(buildReceiptText());
+  if (!ok) {
+    setMsg("Drucker nicht erreichbar – bitte Kabel/Port prüfen", false);
+    soundError();
+    return;
+  }
+  soundPrintOk();
+  setMsg("Bon gedruckt 🧾");
+}
 
-  const lines = cart.map(it => ({
-    name: it.name,
-    qty: it.qty,
-    sum: eur(it.unitCents * it.qty),
-  }));
+// ✅ BEZAHLT: prüfen → drucken → neuer Bon
+async function payAndPrint() {
+  const total = cartTotalCents();
+  if (total <= 0) {
+    setMsg("Warenkorb ist leer", false);
+    soundError();
+    return;
+  }
+  if (givenCents < total) {
+    setMsg("Noch zu wenig Geld 😊", false);
+    soundError();
+    return;
+  }
 
-  const win = window.open("", "printWin");
-  if (!win) {
-    setMsg("Popup blockiert – bitte erlauben", false);
+  setMsg("Drucke Bon…");
+  const ok = await printToRealPrinter(buildReceiptText());
+
+  if (!ok) {
+    setMsg("Drucker nicht erreichbar – bitte Kabel/Port prüfen", false);
     soundError();
     return;
   }
 
   soundPrintOk();
-
-  win.document.write(`
-<!doctype html><html><head><meta charset="utf-8">
-<title>Bon</title>
-<style>
-  body{font-family:monospace;margin:0;padding:12px;}
-  .c{width:320px;max-width:100%;}
-  .hr{border-top:1px dashed #000;margin:8px 0;}
-  .row{display:flex;justify-content:space-between;gap:10px;}
-  .small{font-size:12px;}
-  h3{margin:0 0 6px 0;text-align:center;}
-</style>
-</head><body>
-<div class="c">
-  <h3>KINDERLADEN</h3>
-  <div class="small">Datum: ${dateStr} &nbsp; ${timeStr}</div>
-  <div class="hr"></div>
-  ${lines.map(l => `
-    <div class="row"><div>${l.name} x${l.qty}</div><div>${l.sum}</div></div>
-  `).join("")}
-  <div class="hr"></div>
-  <div class="row"><div><b>Summe</b></div><div><b>${eur(total)}</b></div></div>
-  <div class="row"><div>Gegeben</div><div>${eur(givenCents)}</div></div>
-  <div class="row"><div>Rückgeld</div><div>${eur(givenCents - total)}</div></div>
-  <div class="hr"></div>
-  <div style="text-align:center">Danke fürs Einkaufen! :)</div>
-</div>
-<script>window.print(); window.close();</script>
-</body></html>
-  `);
-  win.document.close();
-
-  setMsg("Bon gedruckt 🧾");
+  setMsg("Bezahlt ✅ Neuer Bon…");
+  setTimeout(() => newReceipt(), 250);
 }
 
 // --- Rendering ---
 function renderCart() {
-  if (!cartBody) return;
   cartBody.innerHTML = "";
   cart.forEach((it, idx) => {
     const tr = document.createElement("tr");
@@ -547,15 +681,15 @@ function renderCart() {
   });
 
   const pos = cart.reduce((n, it) => n + it.qty, 0);
-  if (posCountEl) posCountEl.textContent = String(pos);
+  posCountEl.textContent = String(pos);
 }
 
 function renderTotalsAndButtons() {
   const total = cartTotalCents();
-  if (sumTotalEl) sumTotalEl.textContent = eur(total);
-  if (sumBoxValue) sumBoxValue.textContent = eur(total);
-  if (givenBoxValue) givenBoxValue.textContent = eur(givenCents);
-  if (changeBoxValue) changeBoxValue.textContent = eur(Math.max(0, givenCents - total));
+  sumTotalEl.textContent = eur(total);
+  sumBoxValue.textContent = eur(total);
+  givenBoxValue.textContent = eur(givenCents);
+  changeBoxValue.textContent = eur(Math.max(0, givenCents - total));
 
   if (total > 0 && givenCents < total) setMsg("Noch zu wenig Geld 😊", false);
   else if (total > 0 && givenCents === total) setMsg("Perfekt passend ✅", true);
@@ -579,35 +713,24 @@ function makeMoneyBtn(denomCents) {
 
   btn.appendChild(val);
   btn.appendChild(count);
-
   btn.onclick = () => tapMoney(denomCents);
   return btn;
 }
 
 function renderMoneyButtons() {
-  if (!coinsGrid || !notesGrid) return;
-
   coinsGrid.innerHTML = "";
   notesGrid.innerHTML = "";
 
-  // Wenn decimals OFF: keine Cent-Münzen
-  let coins;
-  if (settings.decimals === "off") {
-    coins = [100, 200]; // nur 1€ / 2€ (einfach & kindgerecht)
-  } else {
-    coins = COINS_ALL;
-    if (settings.centMode === "coarse") coins = COINS_COARSE;
-    if (settings.centMode === "none") coins = [100, 200];
-  }
+  let coins = COINS_ALL;
+  if (settings.centMode === "coarse") coins = COINS_COARSE;
+  if (settings.centMode === "none") coins = [100, 200];
 
   const notes = [...NOTES_BASE, ...(settings.bigNotes === "on" ? NOTES_BIG : [])];
 
-  if (bigNotesHint) {
-    bigNotesHint.textContent =
-      settings.bigNotes === "on"
-        ? "Große Scheine aktiv ✅"
-        : "Große Scheine aus (100/200/500 versteckt)";
-  }
+  bigNotesHint.textContent =
+    settings.bigNotes === "on"
+      ? "Große Scheine aktiv ✅"
+      : "Große Scheine aus (100/200/500 versteckt)";
 
   coins.forEach(c => coinsGrid.appendChild(makeMoneyBtn(c)));
   notes.forEach(c => notesGrid.appendChild(makeMoneyBtn(c)));
@@ -628,13 +751,11 @@ function applyUiMode() {
 
 // --- Product list render ---
 function renderProductsList(filter = "") {
-  if (!prodListBody) return;
-
   const f = String(filter || "").trim().toLowerCase();
 
   const entries = Object.entries(PRODUCTS)
-    .map(([ean, obj]) => ({ ean, name: obj.name, price: obj.price }))
-    .filter(x => !f || x.ean.includes(f) || x.name.toLowerCase().includes(f))
+    .map(([code, obj]) => ({ code, name: obj.name, price: obj.price }))
+    .filter(x => !f || x.code.includes(f) || x.name.toLowerCase().includes(f))
     .sort((a, b) => a.name.localeCompare(b.name, "de"));
 
   prodListBody.innerHTML = "";
@@ -644,7 +765,7 @@ function renderProductsList(filter = "") {
     tr.title = "Klicken zum Laden";
 
     const tdE = document.createElement("td");
-    tdE.textContent = it.ean;
+    tdE.textContent = it.code;
 
     const tdN = document.createElement("td");
     tdN.textContent = it.name;
@@ -658,16 +779,12 @@ function renderProductsList(filter = "") {
     tr.appendChild(tdP);
 
     tr.onclick = () => {
-      if (prodEanInput) prodEanInput.value = it.ean;
-      if (prodNameInput) prodNameInput.value = it.name;
-
-      // Anzeige im Feld:
-      if (prodPriceInput) {
-        if (settings.decimals === "off") {
-          prodPriceInput.value = String(Math.round(it.price / 100));
-        } else {
-          prodPriceInput.value = (it.price / 100).toFixed(2).replace(".", ",");
-        }
+      prodEanInput.value = it.code;
+      prodNameInput.value = it.name;
+      if (settings.decimals === "off") {
+        prodPriceInput.value = String(Math.round(it.price / 100));
+      } else {
+        prodPriceInput.value = (it.price / 100).toFixed(2).replace(".", ",");
       }
       setProdHint("Artikel geladen. Du kannst ihn ändern und speichern.");
     };
@@ -684,36 +801,32 @@ function render() {
   renderMoneyCounters();
   renderProductsList(prodSearchInput?.value || "");
 
-  if (settings.uiMode === "standard") {
-    setTimeout(() => scanInput?.focus(), 60);
-  }
+  setTimeout(() => scanInput?.focus(), 60);
 }
 
 // --- Admin modal logic ---
 function openAdmin() {
-  if (!adminBackdrop) return;
   adminBackdrop.classList.remove("hidden");
-  adminLocked?.classList.remove("hidden");
-  adminUnlocked?.classList.add("hidden");
-  if (pinInput) pinInput.value = "";
-  pinInput?.focus();
+  adminLocked.classList.remove("hidden");
+  adminUnlocked.classList.add("hidden");
+  pinInput.value = "";
+  pinInput.focus();
 }
 
 function closeAdminModal() {
-  adminBackdrop?.classList.add("hidden");
+  adminBackdrop.classList.add("hidden");
 }
 
 function loginAdmin() {
-  if (!pinInput) return;
   if (pinInput.value === ADMIN_PIN) {
-    adminLocked?.classList.add("hidden");
-    adminUnlocked?.classList.remove("hidden");
+    adminLocked.classList.add("hidden");
+    adminUnlocked.classList.remove("hidden");
 
-    if (uiModeSelect) uiModeSelect.value = settings.uiMode;
-    if (centModeSelect) centModeSelect.value = settings.centMode;
-    if (bigNotesSelect) bigNotesSelect.value = settings.bigNotes;
-    if (confirmBigNotesSelect) confirmBigNotesSelect.value = settings.confirmBigNotes;
-    if (soundSelect) soundSelect.value = settings.sound;
+    uiModeSelect.value = settings.uiMode;
+    centModeSelect.value = settings.centMode;
+    bigNotesSelect.value = settings.bigNotes;
+    confirmBigNotesSelect.value = settings.confirmBigNotes;
+    soundSelect.value = settings.sound;
     if (decimalsSelect) decimalsSelect.value = settings.decimals;
 
     renderProductsList("");
@@ -726,17 +839,17 @@ function loginAdmin() {
 }
 
 function logoutAdmin() {
-  adminLocked?.classList.remove("hidden");
-  adminUnlocked?.classList.add("hidden");
-  if (pinInput) pinInput.value = "";
+  adminLocked.classList.remove("hidden");
+  adminUnlocked.classList.add("hidden");
+  pinInput.value = "";
 }
 
 function saveAdminSettings() {
-  if (uiModeSelect) settings.uiMode = uiModeSelect.value;
-  if (centModeSelect) settings.centMode = centModeSelect.value;
-  if (bigNotesSelect) settings.bigNotes = bigNotesSelect.value;
-  if (confirmBigNotesSelect) settings.confirmBigNotes = confirmBigNotesSelect.value;
-  if (soundSelect) settings.sound = soundSelect.value;
+  settings.uiMode = uiModeSelect.value;
+  settings.centMode = centModeSelect.value;
+  settings.bigNotes = bigNotesSelect.value;
+  settings.confirmBigNotes = confirmBigNotesSelect.value;
+  settings.sound = soundSelect.value;
   if (decimalsSelect) settings.decimals = decimalsSelect.value;
 
   saveSettings(settings);
@@ -746,102 +859,90 @@ function saveAdminSettings() {
 
 // --- Product admin actions ---
 function adminCalcCheckDigit() {
-  if (!prodEanInput) return;
   const digits = onlyDigits(prodEanInput.value);
-
-  // EAN-8: erlauben wir ohne Prüfziffer-berechnen
-  if (digits.length === 8) {
-    setProdHint("EAN-8 erkannt ✅ (wird so gespeichert)");
-    return;
-  }
 
   if (digits.length === 13) {
     if (isValidEan13(digits)) setProdHint("EAN-13 ist gültig ✅");
     else { setProdHint("EAN-13 Prüfziffer ist ungültig ❌", false); soundError(); }
     return;
   }
-
-  if (digits.length !== 12) {
-    setProdHint("Bitte 8 / 12 / 13 Stellen eingeben", false);
-    soundError();
+  if (digits.length === 8) {
+    if (isValidEan8(digits)) setProdHint("EAN-8 ist gültig ✅");
+    else { setProdHint("EAN-8 Prüfziffer ist ungültig ❌", false); soundError(); }
     return;
   }
 
-  const full = normalizeEanInputTo13(digits);
-  prodEanInput.value = full || digits;
-  setProdHint(`Prüfziffer berechnet: ${prodEanInput.value}`);
+  if (digits.length === 12) {
+    const full = normalizeCode(digits);
+    prodEanInput.value = full || digits;
+    setProdHint(`Prüfziffer berechnet (EAN-13): ${prodEanInput.value}`);
+    return;
+  }
+
+  if (digits.length === 7) {
+    const full = normalizeCode(digits);
+    prodEanInput.value = full || digits;
+    setProdHint(`Prüfziffer berechnet (EAN-8): ${prodEanInput.value}`);
+    return;
+  }
+
+  setProdHint("Bitte 7/8 oder 12/13 Stellen eingeben", false);
+  soundError();
 }
 
-async function adminSaveProduct() {
-  const code = normalizeEanInputTo13(prodEanInput?.value || "");
-  if (!code) { setProdHint("Code muss 8 / 12 / 13-stellig sein", false); soundError(); return; }
+function adminSaveProduct() {
+  const code = normalizeCode(prodEanInput.value);
+  if (!code) { setProdHint("Code muss 7/8 oder 12/13-stellig sein", false); soundError(); return; }
+  if (!isValidCode(code)) { setProdHint("Prüfziffer ungültig (EAN-8/EAN-13)", false); soundError(); return; }
 
-  if (code.length === 13 && !isValidEan13(code)) {
-    setProdHint("EAN-13 Prüfziffer ist ungültig", false);
-    soundError();
-    return;
-  }
-
-  const name = String(prodNameInput?.value || "").trim();
+  const name = String(prodNameInput.value || "").trim();
   if (!name) { setProdHint("Artikelname fehlt", false); soundError(); return; }
 
-  const priceCents = parseEuroToCents(prodPriceInput?.value || "");
-  if (priceCents === null) { setProdHint("Preis ungültig (z. B. 1,20)", false); soundError(); return; }
+  const priceCents = parseEuroToCents(prodPriceInput.value);
+  if (priceCents === null) { setProdHint("Preis ungültig", false); soundError(); return; }
 
-  PRODUCTS[code] = { name, price: priceCents };
+  // Overrides speichern
+  PRODUCTS_OVERRIDES[code] = { name, price: priceCents };
+  saveOverrides(PRODUCTS_OVERRIDES);
+  mergeProducts();
 
-  const ok = await saveProductsToServer();
-  if (!ok) {
-    setProdHint("Speichern fehlgeschlagen (Server nicht erreichbar)", false);
-    soundError();
-    return;
-  }
-
-  if (prodEanInput) prodEanInput.value = code;
+  prodEanInput.value = code;
   setProdHint(`Gespeichert ✅ (${code})`);
-  renderProductsList(prodSearchInput?.value || "");
-  render(); // damit Kassa sofort aktuelle Preise hat
-}
-
-async function adminDeleteProduct() {
-  const code = normalizeEanInputTo13(prodEanInput?.value || "");
-  if (!code) { setProdHint("Gültigen Code zum Löschen eingeben", false); soundError(); return; }
-
-  if (code.length === 13 && !isValidEan13(code)) {
-    setProdHint("EAN-13 ungültig", false);
-    soundError();
-    return;
-  }
-
-  if (!PRODUCTS[code]) { setProdHint("Code nicht vorhanden", false); soundError(); return; }
-
-  const ok = confirm(`Artikel ${code} wirklich löschen?`);
-  if (!ok) return;
-
-  delete PRODUCTS[code];
-
-  const saved = await saveProductsToServer();
-  if (!saved) {
-    setProdHint("Löschen fehlgeschlagen (Server nicht erreichbar)", false);
-    soundError();
-    return;
-  }
-
-  setProdHint("Gelöscht ✅");
-  if (prodNameInput) prodNameInput.value = "";
-  if (prodPriceInput) prodPriceInput.value = "";
   renderProductsList(prodSearchInput?.value || "");
   render();
 }
 
-// --- CSV Export/Import (arbeitet auf PRODUCTS + speichert via Server) ---
+function adminDeleteProduct() {
+  const code = normalizeCode(prodEanInput.value);
+  if (!code || !isValidCode(code)) { setProdHint("Gültigen Code zum Löschen eingeben", false); soundError(); return; }
+
+  // Nur Overrides löschen (Base bleibt in products.json)
+  if (!PRODUCTS_OVERRIDES[code]) {
+    setProdHint("Dieser Artikel kommt aus products.json – lösche ihn dort oder überschreibe ihn.", false);
+    soundError();
+    return;
+  }
+
+  const ok = confirm(`Artikel ${code} wirklich löschen?`);
+  if (!ok) return;
+
+  delete PRODUCTS_OVERRIDES[code];
+  saveOverrides(PRODUCTS_OVERRIDES);
+  mergeProducts();
+
+  setProdHint("Gelöscht ✅");
+  prodNameInput.value = "";
+  prodPriceInput.value = "";
+  renderProductsList(prodSearchInput?.value || "");
+  render();
+}
+
+// --- CSV Export/Import ---
 function exportProductsToCsv() {
   const rows = [["ean", "name", "preis"]];
-  Object.entries(PRODUCTS).forEach(([ean, p]) => {
-    const price = settings.decimals === "off"
-      ? String(Math.round(p.price / 100))
-      : (p.price / 100).toFixed(2).replace(".", ",");
-    rows.push([ean, p.name, price]);
+  Object.entries(PRODUCTS).forEach(([code, p]) => {
+    const price = (p.price / 100).toFixed(2).replace(".", ",");
+    rows.push([code, p.name, price]);
   });
 
   const csv = rows.map(r => r.join(";")).join("\n");
@@ -857,9 +958,9 @@ function exportProductsToCsv() {
   setCsvHint("Export erfolgreich ✅");
 }
 
-async function importProductsFromCsv(file) {
+function importProductsFromCsv(file) {
   const reader = new FileReader();
-  reader.onload = async () => {
+  reader.onload = () => {
     const text = String(reader.result || "");
     const lines = text.split(/\r?\n/).filter(l => l.trim());
 
@@ -871,147 +972,118 @@ async function importProductsFromCsv(file) {
       if (!cols.length) continue;
       if (cols[0].toLowerCase() === "ean") continue;
 
-      const code = normalizeEanInputTo13(cols[0]);
+      const code = normalizeCode(cols[0]);
       const name = cols[1];
       const priceCents = parseEuroToCents(cols[2]);
 
-      if (!code || !name || priceCents === null) {
-        skipped++;
-        continue;
-      }
-      if (code.length === 13 && !isValidEan13(code)) {
+      if (!code || !isValidCode(code) || !name || priceCents === null) {
         skipped++;
         continue;
       }
 
-      PRODUCTS[code] = { name, price: priceCents };
+      PRODUCTS_OVERRIDES[code] = { name, price: priceCents };
       added++;
     }
 
-    const ok = await saveProductsToServer();
-    if (!ok) {
-      setCsvHint("Import fehlgeschlagen (Server nicht erreichbar)", false);
-      soundError();
-      return;
-    }
-
+    saveOverrides(PRODUCTS_OVERRIDES);
+    mergeProducts();
     renderProductsList(prodSearchInput?.value || "");
-    render();
     setCsvHint(`Import fertig ✅ ${added} hinzugefügt, ${skipped} übersprungen`);
+    render();
   };
 
   reader.readAsText(file, "UTF-8");
 }
 
-// --- Optional: Bezahlt (kindgerecht) ---
-function markPaid() {
-  const total = cartTotalCents();
-  if (total <= 0) {
-    setMsg("Warenkorb ist leer", false);
-    soundError();
-    return;
-  }
-  if (givenCents < total) {
-    setMsg("Noch zu wenig Geld 😊", false);
-    soundError();
-    return;
-  }
-  setMsg("BEZAHLT ✅", true);
-}
-
-// --- SSE Scanner Bridge ---
-function setupScannerSSE() {
-  try {
-    const es = new EventSource("/events");
-
-    es.addEventListener("hello", () => {
-      console.log("Scanner-Bridge ready");
-    });
-
-    es.onmessage = (ev) => {
-      const code = String(ev.data || "").replace(/\D/g, "");
-      if (!code) return;
-
-      if (scanInput) scanInput.value = code;
-
-      // Auto hinzufügen:
-      addItemByEan(code);
-
-      // Input sauber machen:
-      if (scanInput) scanInput.value = "";
-    };
-
-    es.onerror = () => {
-      // reconnect passiert automatisch
-    };
-  } catch (e) {
-    console.error("SSE not supported?", e);
-  }
-}
-
-// --- Events / Hooks ---
+// --- Events ---
 document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
 document.addEventListener("keydown", unlockAudioOnce, { once: true });
 
-adminBtn && (adminBtn.onclick = openAdmin);
-closeAdmin && (closeAdmin.onclick = closeAdminModal);
-
-adminBackdrop && adminBackdrop.addEventListener("click", (e) => {
+adminBtn.onclick = openAdmin;
+closeAdmin.onclick = closeAdminModal;
+adminBackdrop.addEventListener("click", (e) => {
   if (e.target === adminBackdrop) closeAdminModal();
 });
 
-pinLoginBtn && (pinLoginBtn.onclick = loginAdmin);
-pinInput && pinInput.addEventListener("keydown", (e) => {
+pinLoginBtn.onclick = loginAdmin;
+pinInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") loginAdmin();
 });
 
-logoutAdminBtn && (logoutAdminBtn.onclick = logoutAdmin);
-saveSettingsBtn && (saveSettingsBtn.onclick = saveAdminSettings);
+logoutAdminBtn.onclick = logoutAdmin;
+saveSettingsBtn.onclick = saveAdminSettings;
 
-clearCartBtn && (clearCartBtn.onclick = clearCart);
-stornoLastBtn && (stornoLastBtn.onclick = stornoLast);
-newReceiptBtn && (newReceiptBtn.onclick = newReceipt);
+clearCartBtn.onclick = clearCart;
+stornoLastBtn.onclick = stornoLast;
+newReceiptBtn.onclick = newReceipt;
 
-btnExact && (btnExact.onclick = setExact);
-btnUndo && (btnUndo.onclick = undoLastMoneyTap);
-btnResetGiven && (btnResetGiven.onclick = resetGiven);
+btnExact.onclick = setExact;
+btnUndo.onclick = undoLastMoneyTap;
+btnResetGiven.onclick = resetGiven;
 
-printBtn && (printBtn.onclick = printReceipt);
-paidBtn && (paidBtn.onclick = markPaid);
+if (printBtn) printBtn.onclick = manualPrint;
+if (btnPaid) btnPaid.onclick = payAndPrint;
 
-addByEanBtn && (addByEanBtn.onclick = () => addItemByEan(scanInput?.value || ""));
-scanInput && scanInput.addEventListener("keydown", (e) => {
+addByEanBtn.onclick = () => {
+  addItemByCode(scanInput.value);
+  scanInput.value = "";
+};
+
+scanInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
-    addItemByEan(scanInput.value);
+    addItemByCode(scanInput.value);
     scanInput.value = "";
   }
 });
 
-prodCalcCheckBtn && (prodCalcCheckBtn.onclick = adminCalcCheckDigit);
-prodSaveBtn && (prodSaveBtn.onclick = adminSaveProduct);
-prodDeleteBtn && (prodDeleteBtn.onclick = adminDeleteProduct);
+prodCalcCheckBtn.onclick = adminCalcCheckDigit;
+prodSaveBtn.onclick = adminSaveProduct;
+prodDeleteBtn.onclick = adminDeleteProduct;
 
-prodSearchInput && prodSearchInput.addEventListener("input", () => {
-  renderProductsList(prodSearchInput.value);
-});
+prodSearchInput.addEventListener("input", () => renderProductsList(prodSearchInput.value));
 
-exportCsvBtn && (exportCsvBtn.onclick = exportProductsToCsv);
-importCsvInput && (importCsvInput.onchange = () => {
+exportCsvBtn.onclick = exportProductsToCsv;
+importCsvInput.onchange = () => {
   if (importCsvInput.files && importCsvInput.files.length > 0) {
     importProductsFromCsv(importCsvInput.files[0]);
     importCsvInput.value = "";
   }
-});
+};
 
 // clock
-if (clockEl) {
-  setInterval(() => (clockEl.textContent = nowClock()), 500);
-  clockEl.textContent = nowClock();
-}
+setInterval(() => (clockEl.textContent = nowClock()), 500);
+clockEl.textContent = nowClock();
 
-// --- INIT ---
-(async function init() {
-  await loadProductsFromServer();
+// --- Scanner SSE ---
+(function setupScannerSSE() {
+  try {
+    const es = new EventSource("/events");
+
+    es.addEventListener("hello", () => {
+      setScannerState(true);
+    });
+
+    es.onmessage = (ev) => {
+      setScannerState(true);
+
+      const code = normalizeCode(ev.data);
+      if (!code) return;
+
+      if (scanInput) scanInput.value = code;
+      addItemByCode(code);
+      if (scanInput) scanInput.value = "";
+    };
+
+    es.onerror = () => {
+      setScannerState(false);
+    };
+  } catch {
+    setScannerState(false);
+  }
+})();
+
+// --- Start: Produkte laden, dann rendern ---
+(async function boot() {
+  await loadProductsJson();
   render();
-  setupScannerSSE();
 })();
