@@ -2,48 +2,41 @@
 import os
 import time
 import json
+import glob
 import threading
 import queue
 import serial
-
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
-
-# =========================
-# CONFIG
-# =========================
 HOST = "0.0.0.0"
 PORT = 8080
 
-# Scanner (RS232/USB Adapter)
-SCANNER_PORT = "/dev/ttyUSB0"
+# Scanner / Drucker Settings
 SCANNER_BAUD = 9600
-
-# Drucker (USB/Serial, z.B. Partner RP-320)
-PRINTER_PORT = "/dev/ttyUSB1"
 PRINTER_BAUD = 19200
 
-# Datei für Produkte (persistiert am Pi)
-PRODUCTS_FILE = "products.json"
+# Stabiler Match über by-id (wird automatisch gefunden)
+SCANNER_MATCH = "Silicon_Labs_CP2102"
+PRINTER_MATCH = "FTDI_USB_Serial_Converter"
 
-# Extra Papier-Vorlauf am Ende (Leerzeilen)
-PRINTER_TRAILING_FEEDS = 6   # z.B. 6 Zeilen extra zum Abreißen
+# Fallback falls by-id nicht existiert (z.B. sehr früher Boot)
+SCANNER_FALLBACK = "/dev/ttyUSB1"
+PRINTER_FALLBACK = "/dev/ttyUSB0"
 
-# Optional: Cut-Command (ESC/POS)
-# Manche Drucker schneiden nicht über ESC/POS (oder nur bei Autocut ON).
-ENABLE_ESC_POS_CUT = False
+# Handshake:
+# Scanner braucht meist nix, Drucker: DTR/DSR (dsrdtr=True). RTS/CTS meist NICHT nötig.
+PRINTER_DSRDTR = True
+PRINTER_RTSCTS = False
 
+# Extra Feed: mehr Papier raus
+EXTRA_NEWLINES = 8     # zusätzliche Leerzeilen am Ende
+ESC_POS_FEED_LINES = 6 # ESC d n (Print and feed n lines)
 
-# =========================
-# SSE CLIENTS
-# =========================
 clients_lock = threading.Lock()
 clients = []  # list[queue.Queue[str]]
 
-
 def broadcast(msg: str):
-    """Sendet eine Nachricht an alle SSE-Clients (/events)."""
     with clients_lock:
         dead = []
         for q in clients:
@@ -57,165 +50,111 @@ def broadcast(msg: str):
             except Exception:
                 pass
 
+def find_serial_by_id(match: str) -> str | None:
+    paths = glob.glob("/dev/serial/by-id/*")
+    for p in paths:
+        if match in os.path.basename(p):
+            return p
+    return None
 
-# =========================
-# PRODUCTS (JSON helpers)
-# =========================
-products_lock = threading.Lock()
+def resolve_ports():
+    """Findet Ports stabil über by-id; fällt sonst auf ttyUSB* zurück."""
+    scanner = find_serial_by_id(SCANNER_MATCH) or SCANNER_FALLBACK
+    printer = find_serial_by_id(PRINTER_MATCH) or PRINTER_FALLBACK
+    return scanner, printer
 
+def clean_digits(s: str) -> str:
+    return "".join(ch for ch in s if ch.isdigit())
 
-def load_products() -> dict:
-    """Lädt products.json. Wenn nicht vorhanden -> {}"""
-    with products_lock:
-        try:
-            with open(PRODUCTS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return {}
-        except Exception:
-            # kaputte Datei? -> leeres dict
-            return {}
-
-
-def save_products(data: dict):
-    """Speichert products.json sauber formatiert."""
-    with products_lock:
-        with open(PRODUCTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-# =========================
-# SCANNER SERIAL THREAD
-# =========================
-def serial_scanner_reader():
-    """Liest Scanner-Serial und broadcastet Ziffern über SSE."""
+def scanner_reader_thread():
+    """Liest Scanner kontinuierlich und broadcastet EAN/Code an SSE."""
     while True:
+        scanner_port, _ = resolve_ports()
         try:
             with serial.Serial(
-                SCANNER_PORT,
+                scanner_port,
                 SCANNER_BAUD,
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
                 timeout=1,
             ) as ser:
-                print(f"[bridge] Scanner OK: {SCANNER_PORT} @ {SCANNER_BAUD}")
+                print(f"[bridge] Scanner OK: {scanner_port} @ {SCANNER_BAUD}")
                 buf = ""
                 while True:
                     data = ser.read(64)
                     if not data:
                         continue
-
-                    try:
-                        s = data.decode("utf-8", errors="ignore")
-                    except Exception:
-                        continue
-
+                    s = data.decode("utf-8", errors="ignore")
                     buf += s
 
-                    # Scanner sendet meist CR/LF am Ende -> wir splitten an \r/\n
+                    # Scanner sendet meist \r oder \n
                     while "\n" in buf or "\r" in buf:
                         parts = buf.replace("\r", "\n").split("\n")
-                        buf = parts[-1]  # Rest bleibt
+                        buf = parts[-1]
                         for p in parts[:-1]:
-                            ean = "".join(ch for ch in p if ch.isdigit())
-                            if not ean:
+                            code = clean_digits(p)
+                            if not code:
                                 continue
-                            print("[scan]", ean)
-                            broadcast(ean)
+                            # akzeptiere EAN-8 oder EAN-13 (oder auch andere Zahlencodes)
+                            print("[scan]", code)
+                            broadcast(code)
 
         except Exception as e:
             print("[bridge] Scanner error:", e)
-            time.sleep(2)
+            time.sleep(1)
 
+def escpos_wrap_text(text: str) -> bytes:
+    """
+    Drucker mag CP437 + CRLF.
+    Extra: ESC d n für Feed + zusätzliche Leerzeilen.
+    """
+    # \n -> CRLF
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
 
-# =========================
-# PRINTER (queue + thread)
-# =========================
-printer_queue = queue.Queue()
+    # encode CP437 (klassisch für ESC/POS)
+    payload = text.encode("cp437", errors="replace")
 
+    # Extra Leerzeilen
+    payload += ("\r\n" * EXTRA_NEWLINES).encode("ascii")
 
-def escpos_cut() -> bytes:
-    # ESC i (full cut) ist bei vielen kompatiblen Geräten ok,
-    # alternativ GS V 0 (0x1D 0x56 0x00)
-    return b"\x1b\x69"
+    # ESC d n (Print and feed n lines)
+    payload += bytes([0x1B, 0x64, int(ESC_POS_FEED_LINES) & 0xFF])
 
+    # Abschluss nochmal CRLF
+    payload += b"\r\n\r\n"
+    return payload
 
-def normalize_crlf(text: str) -> bytes:
-    # CRLF erzwingen
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace("\n", "\r\n")
-    return text.encode("utf-8", errors="ignore")
+def print_to_printer(text: str) -> tuple[bool, str]:
+    """Schreibt direkt an den Bondrucker."""
+    _, printer_port = resolve_ports()
+    try:
+        with serial.Serial(
+            printer_port,
+            PRINTER_BAUD,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=2,
+            dsrdtr=PRINTER_DSRDTR,
+            rtscts=PRINTER_RTSCTS,
+        ) as ser:
+            print(f"[bridge] Printer OK: {printer_port} @ {PRINTER_BAUD}")
+            data = escpos_wrap_text(text)
+            ser.write(data)
+            ser.flush()
+        return True, printer_port
+    except Exception as e:
+        return False, f"{printer_port}: {e}"
 
-
-def printer_worker():
-    """Nimmt Print-Jobs aus printer_queue und schreibt sie an den Drucker."""
-    while True:
-        job = printer_queue.get()
-        try:
-            if job is None:
-                continue
-
-            payload_text = job.get("text", "")
-            if not isinstance(payload_text, str):
-                payload_text = str(payload_text)
-
-            # extra feeds anhängen
-            payload_text = payload_text + ("\r\n" * PRINTER_TRAILING_FEEDS)
-
-            raw = normalize_crlf(payload_text)
-
-            with serial.Serial(
-                PRINTER_PORT,
-                PRINTER_BAUD,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE,
-                timeout=2,
-                write_timeout=2,
-                dsrdtr=True,   # DTR/DSR
-                rtscts=False,
-            ) as ser:
-                print(f"[bridge] Printer OK: {PRINTER_PORT} @ {PRINTER_BAUD}")
-                ser.write(raw)
-                ser.flush()
-
-                if ENABLE_ESC_POS_CUT:
-                    try:
-                        ser.write(escpos_cut())
-                        ser.flush()
-                    except Exception:
-                        pass
-
-            print("[print] done")
-
-        except Exception as e:
-            print("[bridge] Printer error:", e)
-        finally:
-            printer_queue.task_done()
-
-
-# =========================
-# HTTP HANDLER
-# =========================
 class Handler(SimpleHTTPRequestHandler):
-    # Kein Cache (damit Updates sofort sichtbar sind)
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
-    def _send_json(self, code: int, obj):
-        raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(raw)
-
     def do_GET(self):
         parsed = urlparse(self.path)
 
-        # --- SSE events ---
         if parsed.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -227,7 +166,6 @@ class Handler(SimpleHTTPRequestHandler):
             with clients_lock:
                 clients.append(q)
 
-            # hello event
             try:
                 self.wfile.write(b"event: hello\ndata: ready\n\n")
                 self.wfile.flush()
@@ -246,76 +184,51 @@ class Handler(SimpleHTTPRequestHandler):
                         clients.remove(q)
             return
 
-        # --- products.json via API ---
-        if parsed.path == "/products":
-            data = load_products()
-            self._send_json(200, data)
-            return
-
-        # --- simple health ---
-        if parsed.path == "/health":
-            self._send_json(200, {"ok": True, "time": int(time.time())})
-            return
-
-        # sonst statische Dateien (index.html/app.js/styles.css/...)
         return super().do_GET()
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length > 0 else b""
 
-        # --- save products ---
-        if parsed.path == "/products":
-            try:
-                data = json.loads(body.decode("utf-8"))
-                if not isinstance(data, dict):
-                    return self._send_json(400, {"ok": False, "error": "products must be an object/dict"})
-                save_products(data)
-                return self._send_json(200, {"ok": True})
-            except Exception as e:
-                return self._send_json(500, {"ok": False, "error": str(e)})
-
-        # --- print receipt ---
-        # Erwartet JSON:
-        # { "text": "..." }
         if parsed.path == "/print":
             try:
-                data = json.loads(body.decode("utf-8"))
-                if not isinstance(data, dict):
-                    return self._send_json(400, {"ok": False, "error": "body must be JSON object"})
-                if "text" not in data:
-                    return self._send_json(400, {"ok": False, "error": "missing 'text'"})
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length) if length > 0 else b"{}"
+                obj = json.loads(raw.decode("utf-8", errors="ignore"))
+                text = str(obj.get("text", "")).strip()
 
-                printer_queue.put({"text": str(data["text"])})
-                return self._send_json(200, {"ok": True})
+                if not text:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": False, "error": "empty text"}).encode("utf-8"))
+                    return
+
+                ok, info = print_to_printer(text)
+
+                self.send_response(200 if ok else 500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": ok, "info": info}).encode("utf-8"))
+                return
             except Exception as e:
-                return self._send_json(500, {"ok": False, "error": str(e)})
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+                return
 
-        return self._send_json(404, {"ok": False, "error": "unknown endpoint"})
+        self.send_response(404)
+        self.end_headers()
 
-
-# =========================
-# MAIN
-# =========================
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-    # Scanner Thread
-    t_scan = threading.Thread(target=serial_scanner_reader, daemon=True)
-    t_scan.start()
-
-    # Printer Thread
-    t_prn = threading.Thread(target=printer_worker, daemon=True)
-    t_prn.start()
+    t = threading.Thread(target=scanner_reader_thread, daemon=True)
+    t.start()
 
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"[bridge] Web: http://{HOST}:{PORT}")
-    print(f"[bridge] Scanner: {SCANNER_PORT} @ {SCANNER_BAUD}")
-    print(f"[bridge] Printer: {PRINTER_PORT} @ {PRINTER_BAUD}")
-    print(f"[bridge] products: {os.path.abspath(PRODUCTS_FILE)}")
     httpd.serve_forever()
-
 
 if __name__ == "__main__":
     main()
