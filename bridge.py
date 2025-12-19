@@ -21,8 +21,8 @@ SCANNER_MATCH = "FTDI_USB_Serial_Converter"
 PRINTER_MATCH = "Silicon_Labs_CP2102"
 
 # Fallback falls by-id nicht existiert (z.B. sehr früher Boot)
-SCANNER_FALLBACK = "/dev/ttyUSB1"
-PRINTER_FALLBACK = "/dev/ttyUSB0"
+SCANNER_FALLBACK = "/dev/ttyUSB0"
+PRINTER_FALLBACK = "/dev/ttyUSB1"
 
 # Handshake:
 # Scanner braucht meist nix, Drucker: DTR/DSR (dsrdtr=True). RTS/CTS meist NICHT nötig.
