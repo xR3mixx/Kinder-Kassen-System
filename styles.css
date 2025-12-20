@@ -1,8 +1,3 @@
-/* =========================
-   KKS – Kinderkassa Styles
-   Version 1.1.2
-   ========================= */
-
 :root {
   --bg: #0f1115;
   --panel: #151a22;
@@ -18,19 +13,24 @@
 }
 
 * { box-sizing: border-box; }
+html, body { height: 100%; }
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: radial-gradient(1200px 600px at 30% -10%, #1e2a45 0%, transparent 60%),
-              radial-gradient(900px 500px at 90% 0%, #2a1e45 0%, transparent 55%),
-              var(--bg);
+  background:
+    radial-gradient(1200px 600px at 30% -10%, #1e2a45 0%, transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, #2a1e45 0%, transparent 55%),
+    var(--bg);
   color: var(--text);
 }
 
+/* ---------- Topbar ---------- */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--line);
   background: rgba(10,12,16,.65);
@@ -48,6 +48,7 @@ body {
 .top-right { display: flex; gap: 10px; align-items: center; }
 .clock { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* ---------- Layout / Panels ---------- */
 .layout {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
@@ -67,13 +68,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 12px 12px;
   background: var(--panel2);
   border-bottom: 1px solid var(--line);
 }
-.panel-title { font-weight: 800; letter-spacing: .03em; }
-.panel-actions { display: flex; gap: 8px; }
 
+.panel-title { font-weight: 800; letter-spacing: .03em; }
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- Buttons ---------- */
 .btn {
   border: 1px solid var(--line);
   background: var(--btn);
@@ -82,42 +86,16 @@ body {
   border-radius: 12px;
   font-weight: 700;
   cursor: pointer;
+  transition: filter .12s ease, transform .06s ease;
+  user-select: none;
 }
 .btn:hover { filter: brightness(1.08); }
 .btn:active { transform: translateY(1px); }
+
 .btn.subtle { background: var(--btn2); color: var(--muted); }
 .btn.primary { background: var(--accent); border-color: rgba(255,255,255,.15); }
 .btn.danger { background: var(--danger); }
 .btn.big { padding: 14px 12px; border-radius: 14px; }
-
-.scanRow {
-  display: flex;
-  gap: 10px;
-  padding: 12px;
-  border-bottom: 1px solid var(--line);
-}
-.scanInput {
-  flex: 1;
-  padding: 12px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: #0d1016;
-  color: var(--text);
-  font-weight: 700;
-}
-
-.tableWrap { padding: 0 12px 12px; }
-.cartTable {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 12px;
-}
-.cartTable th, .cartTable td {
-  border-bottom: 1px solid var(--line);
-  padding: 10px 8px;
-}
-.cartTable th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-.right { text-align: right; }
 
 .iconBtn {
   border: 1px solid var(--line);
@@ -126,56 +104,123 @@ body {
   padding: 8px 10px;
   border-radius: 10px;
   cursor: pointer;
+  transition: filter .12s ease, transform .06s ease;
 }
 .iconBtn:hover { filter: brightness(1.1); }
+.iconBtn:active { transform: translateY(1px); }
 
+/* ---------- Scan ---------- */
+.scanRow {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.scanInput {
+  flex: 1;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0d1016;
+  color: var(--text);
+  font-weight: 700;
+  outline: none;
+}
+
+/* ---------- Table ---------- */
+.tableWrap { padding: 0 12px 12px; }
+
+.cartTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.cartTable th, .cartTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 8px;
+}
+
+.cartTable th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.right { text-align: right; }
+
+/* ---------- Totals ---------- */
 .totals {
   border-top: 1px solid var(--line);
   padding: 12px;
   display: grid;
   gap: 8px;
 }
-.totRow { display: flex; justify-content: space-between; color: var(--muted); }
-.totRow.big { color: var(--text); font-size: 22px; font-weight: 900; }
 
+.totRow { display: flex; justify-content: space-between; color: var(--muted); }
+
+.totRow.big {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+/* ---------- Bottom Actions ---------- */
 .bottomActions {
   display: flex;
   gap: 10px;
   padding: 12px;
   border-top: 1px solid var(--line);
   background: var(--panel2);
+  flex-wrap: wrap;
 }
 
+/* ---------- Pay Summary ---------- */
 .paySummary {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
   padding: 12px;
 }
+
 .sumBox {
   border: 1px solid var(--line);
   background: #0d1016;
   border-radius: 14px;
   padding: 10px 10px;
 }
-.sumBox .label { color: var(--muted); font-size: 12px; letter-spacing: .08em; }
-.sumBox .value { font-size: 22px; font-weight: 900; margin-top: 4px; font-variant-numeric: tabular-nums; }
 
+.sumBox .label { color: var(--muted); font-size: 12px; letter-spacing: .08em; }
+.sumBox .value {
+  font-size: 22px;
+  font-weight: 900;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Pay Buttons (top) ---------- */
 .payButtonsTop {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   padding: 0 12px 12px;
 }
+
+/* falls es bei dir 3 Buttons gibt und der 3. soll volle Breite: */
 .payButtonsTop .btn:nth-child(3) { grid-column: span 2; }
 
+/* ---------- Denominations ---------- */
 .denomWrap { padding: 0 12px 12px; }
+
 .denomHead {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   margin: 10px 2px 8px;
 }
+
 .denomTitle { font-weight: 900; letter-spacing: .06em; }
 .denomHint { color: var(--muted); font-size: 12px; }
 
@@ -193,11 +238,26 @@ body {
   cursor: pointer;
   display: grid;
   gap: 6px;
+  transition: filter .12s ease, transform .06s ease;
 }
-.moneyBtn .val { font-size: 20px; font-weight: 900; text-align: center; color: var(--accent); }
-.moneyBtn .count { font-size: 12px; color: var(--muted); text-align: center; }
-.moneyBtn:hover { filter: brightness(1.08); }
 
+.moneyBtn .val {
+  font-size: 20px;
+  font-weight: 900;
+  text-align: center;
+  color: var(--accent);
+}
+
+.moneyBtn .count {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.moneyBtn:hover { filter: brightness(1.08); }
+.moneyBtn:active { transform: translateY(1px); }
+
+/* ---------- Print Row ---------- */
 .printRow {
   display: grid;
   grid-template-columns: 1fr 1fr 2fr;
@@ -207,74 +267,76 @@ body {
   border-top: 1px solid var(--line);
   background: var(--panel2);
 }
+
 .msg { color: var(--muted); font-weight: 700; }
 
-/* Modal */
+/* =========================================================
+   Modal (FIX: Header bleibt oben, Content scrollt)
+   ========================================================= */
 .modalBackdrop {
-  position: fixed; inset: 0;
+  position: fixed;
+  inset: 0;
   background: rgba(0,0,0,.6);
   display: grid;
   place-items: center;
   padding: 16px;
   z-index: 50;
 }
-.hidden { display: none !important; }
 
 .modal {
   width: min(980px, 100%);
-  max-height: min(92vh, 920px);
+  height: min(92vh, 920px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
 }
+
 .modalHead {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   padding: 12px;
   background: var(--panel2);
   border-bottom: 1px solid var(--line);
 }
+
 .modalTitle { font-weight: 900; letter-spacing: .06em; }
 
-/* ✅ Admin Scroll (passt zu: <div id="adminUnlocked" class="adminScroll"> ) */
-.adminScroll{
-  max-height: calc(100vh - 140px);  /* Platz für modalHead + Luft */
+/* ✅ Admin Scroll – passt zu deinem Hinweis: <div id="adminUnlocked" class="adminScroll"> */
+.adminScroll {
+  flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 12px;
 }
 
-/* ✅ Modal selbst darf nicht über den Bildschirm hinaus */
-.modal{
-  max-height: calc(100vh - 40px);
-  display: flex;
-  flex-direction: column;
-}
-
-/* ✅ Der Header bleibt oben fix */
-.modalHead{
-  flex: 0 0 auto;
-}
-
-/* optional: damit der Inhaltbereich wirklich den Rest nimmt */
-#adminUnlocked{
+/* Falls bei dir das Element nur #adminUnlocked hat (ohne class), trotzdem scrollbar: */
+#adminUnlocked {
   flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-}
-
-.sectionTitle{
+/* ---------- Admin content ---------- */
+.sectionTitle {
   font-weight: 900;
   letter-spacing: .06em;
   margin: 4px 0 10px 0;
 }
 
 .field { display: grid; gap: 6px; margin-bottom: 10px; }
-.field label { color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+
+.field label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: .06em;
+}
+
 .field input, .field select {
   padding: 12px;
   border-radius: 12px;
@@ -282,7 +344,9 @@ body {
   background: #0d1016;
   color: var(--text);
   font-weight: 700;
+  outline: none;
 }
+
 .hint { color: var(--muted); padding: 6px 0 10px; }
 
 .adminGrid {
@@ -290,25 +354,27 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+
 .adminActions {
   display: flex;
   gap: 10px;
   padding: 8px 0 12px;
+  flex-wrap: wrap;
 }
 
-.rowWrap{
+.rowWrap {
   display:flex;
   gap:10px;
   flex-wrap:wrap;
 }
 
-.hrLine{
-  border:0;
-  border-top:1px solid var(--line);
-  margin:12px 0;
+.hrLine {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 12px 0;
 }
 
-.listBox{
+.listBox {
   max-height: 240px;
   overflow: auto;
   border: 1px solid var(--line);
@@ -317,13 +383,16 @@ body {
   margin-top: 8px;
 }
 
-/* Kid mode tweaks */
+/* ---------- Utility ---------- */
+.hidden { display: none !important; }
+
+/* ---------- Kid mode tweaks ---------- */
 .kid .totRow.big { font-size: 28px; }
 .kid .moneyBtn .val { font-size: 26px; }
 .kid .grid { grid-template-columns: repeat(3, 1fr); }
 .kid .scanRow { display: none; }
 
-/* Responsive */
+/* ---------- Responsive ---------- */
 @media (max-width: 980px) {
   .layout { grid-template-columns: 1fr; }
   .paySummary { grid-template-columns: 1fr; }
@@ -331,3 +400,4 @@ body {
   .adminGrid { grid-template-columns: 1fr; }
   .printRow { grid-template-columns: 1fr; }
 }
+
