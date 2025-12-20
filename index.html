@@ -33,6 +33,9 @@
         </div>
       </div>
 
+      <!-- Optional: Scanner Status -->
+      <div class="hint" id="scannerState" style="padding:0 12px 8px">Scanner: …</div>
+
       <div class="scanRow">
         <input
           id="scanInput"
@@ -120,7 +123,8 @@
       </div>
 
       <div class="printRow">
-        <button class="btn primary" id="paidBtn" type="button">BEZAHLT ✅</button>
+        <!-- WICHTIG: app.js erwartet btnPaid (nicht paidBtn) -->
+        <button class="btn primary" id="btnPaid" type="button">BEZAHLT ✅</button>
         <button class="btn primary" id="printBtn" type="button">BON DRUCKEN 🧾</button>
         <div class="msg" id="msg"></div>
       </div>
@@ -135,9 +139,7 @@
         <button class="btn subtle" id="closeAdmin" type="button">Schließen</button>
       </div>
 
-      <!-- Scrollbarer Inhalt (Header bleibt fix) -->
       <div class="modalBody">
-
         <div id="adminLocked">
           <div class="field" style="padding:12px">
             <label>PIN</label>
@@ -146,12 +148,10 @@
           <div style="padding:0 12px 12px">
             <button class="btn primary" id="pinLoginBtn" type="button">Entsperren</button>
           </div>
-          <div class="hint">Standard-PIN: <b>1234</b> (kannst du im Code ändern)</div>
+          <div class="hint">Standard-PIN: <b>1234</b></div>
         </div>
 
         <div id="adminUnlocked" class="hidden">
-
-          <!-- SETTINGS -->
           <div class="adminGrid">
             <div class="field">
               <label>UI-Modus</label>
@@ -194,11 +194,12 @@
               </select>
             </div>
 
+            <!-- WICHTIG: app.js nutzt decimalsSelect, das fehlte zuvor oft -->
             <div class="field">
-              <label>Auto-Bon bei „Bezahlt“</label>
-              <select id="autoPrintSelect">
-                <option value="off">Aus</option>
+              <label>Dezimalzahlen</label>
+              <select id="decimalsSelect">
                 <option value="on">Ein</option>
+                <option value="off">Aus</option>
               </select>
             </div>
           </div>
@@ -210,7 +211,6 @@
 
           <hr style="border:0;border-top:1px solid var(--line);margin:0">
 
-          <!-- PRODUCT MANAGEMENT -->
           <div style="padding:12px">
             <div class="modalTitle" style="margin-bottom:8px">ARTIKEL VERWALTEN</div>
 
@@ -219,17 +219,14 @@
                 <label>Code (EAN-8 oder EAN-13)</label>
                 <input id="prodEanInput" inputmode="numeric" placeholder="7/8 oder 12/13 Stellen" />
               </div>
-
               <div class="field">
                 <label>Artikelname</label>
                 <input id="prodNameInput" placeholder="z. B. Apfel" />
               </div>
-
               <div class="field">
-                <label>Preis (€) (z. B. 1,20)</label>
+                <label>Preis (€)</label>
                 <input id="prodPriceInput" inputmode="decimal" placeholder="z. B. 1,20" />
               </div>
-
               <div class="field">
                 <label>Aktion</label>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -241,11 +238,11 @@
             </div>
 
             <div class="hint" id="prodHint" style="padding-top:0">
-              Tipp: 7 Stellen → EAN-8, 12 Stellen → EAN-13 (Prüfziffer berechnen).
+              Tipp: 7 Stellen → EAN-8, 12 Stellen → EAN-13
             </div>
 
             <div class="field" style="padding-top:6px">
-              <label>Suche / Liste (klick zum Laden)</label>
+              <label>Suche / Liste</label>
               <input id="prodSearchInput" placeholder="Suche nach Name oder Code…" />
             </div>
 
@@ -264,20 +261,16 @@
 
             <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
 
-            <!-- CSV IMPORT/EXPORT -->
             <div class="modalTitle" style="margin-bottom:8px">IMPORT / EXPORT</div>
-
             <div style="display:flex;gap:10px;flex-wrap:wrap">
               <button class="btn" id="exportCsvBtn" type="button">📤 Export CSV</button>
-
               <label class="btn" style="cursor:pointer">
                 📥 Import CSV
                 <input type="file" id="importCsvInput" accept=".csv" hidden>
               </label>
             </div>
-
             <div class="hint" id="csvHint" style="padding-top:8px">
-              CSV-Format: <b>code;name;preis</b> (Code = EAN-8 oder EAN-13)
+              CSV-Format: <b>ean;name;preis</b>
             </div>
           </div>
 
@@ -286,39 +279,7 @@
     </div>
   </div>
 
-  <!-- app.js lädt wie gehabt -->
   <script src="app.js" defer></script>
-
-  <!-- iPad Fix: Tastatur nicht öffnen bei "Bezahlt" / "Bon drucken" -->
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      const scan = document.getElementById("scanInput");
-      const paid = document.getElementById("paidBtn");
-      const print = document.getElementById("printBtn");
-      const adminBackdrop = document.getElementById("adminBackdrop");
-
-      function hideKeyboard() {
-        // Fokus weg -> iOS Tastatur zu
-        try { document.activeElement && document.activeElement.blur(); } catch(e) {}
-        try { scan && scan.blur(); } catch(e) {}
-      }
-
-      // Capture = wir sind schneller als app.js, falls es scanInput wieder fokussiert
-      if (paid) paid.addEventListener("click", hideKeyboard, true);
-      if (print) print.addEventListener("click", hideKeyboard, true);
-
-      // Optional: Wenn Admin offen ist, nie Scan-Fokus erzwingen
-      document.addEventListener("click", (ev) => {
-        if (!scan) return;
-        const adminOpen = adminBackdrop && !adminBackdrop.classList.contains("hidden");
-        if (adminOpen) return;
-
-        const t = ev.target;
-        const isTyping =
-          t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
-        if (isTyping) return;
-      }, { capture: true });
-    });
-  </script>
 </body>
 </html>
+
