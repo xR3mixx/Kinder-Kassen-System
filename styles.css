@@ -14,29 +14,18 @@
   --btn2: #1f2734;
   --danger: #7a2c2c;
   --accent: #3a6cff;
-  --accent-soft: #4b7dff;
   --radius: 14px;
 }
 
-/* Reset */
-* {
-  box-sizing: border-box;
-}
-
+* { box-sizing: border-box; }
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background:
-    radial-gradient(1200px 600px at 30% -10%, #1e2a45 0%, transparent 60%),
-    radial-gradient(900px 500px at 90% 0%, #2a1e45 0%, transparent 55%),
-    var(--bg);
+  background: radial-gradient(1200px 600px at 30% -10%, #1e2a45 0%, transparent 60%),
+              radial-gradient(900px 500px at 90% 0%, #2a1e45 0%, transparent 55%),
+              var(--bg);
   color: var(--text);
-  overflow: hidden;
 }
-
-/* =========================
-   Topbar
-   ========================= */
 
 .topbar {
   display: flex;
@@ -44,126 +33,62 @@ body {
   justify-content: space-between;
   padding: 14px 16px;
   border-bottom: 1px solid var(--line);
-  background: rgba(10, 12, 16, 0.75);
+  background: rgba(10,12,16,.65);
   backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
-.brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
+.brand { display: flex; gap: 12px; align-items: center; }
+.logo { font-size: 28px; }
+.title { font-weight: 800; letter-spacing: .06em; }
+.subtitle { color: var(--muted); font-size: 12px; }
 
-.logo {
-  font-size: 28px;
-}
-
-.title {
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.subtitle {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.top-right {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.clock {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* =========================
-   Layout
-   ========================= */
+.top-right { display: flex; gap: 10px; align-items: center; }
+.clock { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .layout {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
   gap: 14px;
   padding: 14px;
-  height: calc(100vh - 64px);
 }
 
-/* =========================
-   Panels
-   ========================= */
-
 .panel {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.03), transparent 30%),
-    var(--panel);
+  background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 30%),
+              var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
 .panel-head {
-  padding: 12px;
-  background: var(--panel2);
-  border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 12px 12px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
 }
-
-.panel-title {
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
-/* =========================
-   Buttons
-   ========================= */
+.panel-title { font-weight: 800; letter-spacing: .03em; }
+.panel-actions { display: flex; gap: 8px; }
 
 .btn {
   border: 1px solid var(--line);
   background: var(--btn);
   color: var(--text);
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
   font-weight: 700;
   cursor: pointer;
 }
-
-.btn:hover {
-  filter: brightness(1.1);
-}
-
-.btn:active {
-  transform: translateY(1px);
-}
-
-.btn.primary {
-  background: var(--accent);
-  border-color: rgba(255,255,255,0.15);
-}
-
-.btn.subtle {
-  background: var(--btn2);
-  color: var(--muted);
-}
-
-.btn.danger {
-  background: var(--danger);
-}
-
-.btn.big {
-  padding: 16px 14px;
-  font-size: 18px;
-}
-
-/* =========================
-   Scan Row
-   ========================= */
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: translateY(1px); }
+.btn.subtle { background: var(--btn2); color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: rgba(255,255,255,.15); }
+.btn.danger { background: var(--danger); }
+.btn.big { padding: 14px 12px; border-radius: 14px; }
 
 .scanRow {
   display: flex;
@@ -171,116 +96,88 @@ body {
   padding: 12px;
   border-bottom: 1px solid var(--line);
 }
-
 .scanInput {
   flex: 1;
-  padding: 12px;
+  padding: 12px 12px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #0d1016;
   color: var(--text);
-  font-size: 18px;
   font-weight: 700;
 }
 
-/* =========================
-   Warenkorb Tabelle
-   ========================= */
-
-.tableWrap {
-  padding: 12px;
-  overflow-y: auto;
-}
-
+.tableWrap { padding: 0 12px 12px; }
 .cartTable {
   width: 100%;
   border-collapse: collapse;
+  margin-top: 12px;
 }
-
-.cartTable th,
-.cartTable td {
-  padding: 10px 8px;
+.cartTable th, .cartTable td {
   border-bottom: 1px solid var(--line);
+  padding: 10px 8px;
 }
-
-.cartTable th {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-.right {
-  text-align: right;
-}
+.cartTable th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.right { text-align: right; }
 
 .iconBtn {
-  background: var(--btn2);
   border: 1px solid var(--line);
+  background: var(--btn2);
+  color: var(--text);
+  padding: 8px 10px;
   border-radius: 10px;
-  padding: 6px 10px;
   cursor: pointer;
 }
-
-/* =========================
-   Totals
-   ========================= */
+.iconBtn:hover { filter: brightness(1.1); }
 
 .totals {
   border-top: 1px solid var(--line);
   padding: 12px;
+  display: grid;
+  gap: 8px;
 }
+.totRow { display: flex; justify-content: space-between; color: var(--muted); }
+.totRow.big { color: var(--text); font-size: 22px; font-weight: 900; }
 
-.totRow {
+.bottomActions {
   display: flex;
-  justify-content: space-between;
-  color: var(--muted);
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel2);
 }
-
-.totRow.big {
-  font-size: 26px;
-  font-weight: 900;
-  color: var(--text);
-}
-
-/* =========================
-   Zahlung
-   ========================= */
 
 .paySummary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
   padding: 12px;
 }
-
 .sumBox {
-  background: #0d1016;
   border: 1px solid var(--line);
+  background: #0d1016;
   border-radius: 14px;
-  padding: 10px;
+  padding: 10px 10px;
 }
-
-.sumBox .label {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.sumBox .value {
-  font-size: 22px;
-  font-weight: 900;
-  color: var(--accent-soft);
-}
+.sumBox .label { color: var(--muted); font-size: 12px; letter-spacing: .08em; }
+.sumBox .value { font-size: 22px; font-weight: 900; margin-top: 4px; font-variant-numeric: tabular-nums; }
 
 .payButtonsTop {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  padding: 12px;
+  padding: 0 12px 12px;
 }
+.payButtonsTop .btn:nth-child(3) { grid-column: span 2; }
 
-/* =========================
-   Geld Buttons
-   ========================= */
+.denomWrap { padding: 0 12px 12px; }
+.denomHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 10px 2px 8px;
+}
+.denomTitle { font-weight: 900; letter-spacing: .06em; }
+.denomHint { color: var(--muted); font-size: 12px; }
 
 .grid {
   display: grid;
@@ -289,90 +186,148 @@ body {
 }
 
 .moneyBtn {
+  padding: 14px 10px;
+  border-radius: 14px;
   background: #0d1016;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px;
   cursor: pointer;
   display: grid;
   gap: 6px;
 }
+.moneyBtn .val { font-size: 20px; font-weight: 900; text-align: center; color: var(--accent); }
+.moneyBtn .count { font-size: 12px; color: var(--muted); text-align: center; }
+.moneyBtn:hover { filter: brightness(1.08); }
 
-.moneyBtn .val {
-  font-size: 22px;
-  font-weight: 900;
-  text-align: center;
-  color: var(--accent);
+.printRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel2);
 }
+.msg { color: var(--muted); font-weight: 700; }
 
-.moneyBtn .count {
-  font-size: 12px;
-  color: var(--muted);
-  text-align: center;
-}
-
-/* =========================
-   Admin Modal
-   ========================= */
-
+/* Modal */
 .modalBackdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.65);
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.6);
   display: grid;
   place-items: center;
+  padding: 16px;
   z-index: 50;
 }
+.hidden { display: none !important; }
 
 .modal {
   width: min(980px, 100%);
-  max-height: 90vh;
+  max-height: min(92vh, 920px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.modalHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+}
+.modalTitle { font-weight: 900; letter-spacing: .06em; }
+
+/* ✅ Admin Scroll (passt zu: <div id="adminUnlocked" class="adminScroll"> ) */
+.adminScroll{
+  max-height: calc(100vh - 140px);  /* Platz für modalHead + Luft */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+}
+
+/* ✅ Modal selbst darf nicht über den Bildschirm hinaus */
+.modal{
+  max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-.modalBody {
-  overflow-y: auto;
+/* ✅ Der Header bleibt oben fix */
+.modalHead{
+  flex: 0 0 auto;
 }
 
-.hidden {
-  display: none !important;
+/* optional: damit der Inhaltbereich wirklich den Rest nimmt */
+#adminUnlocked{
+  flex: 1 1 auto;
 }
 
-/* =========================
-   Kid Mode
-   ========================= */
-
-.kid .scanRow {
-  display: none;
 }
 
-.kid .moneyBtn .val {
-  font-size: 28px;
+.sectionTitle{
+  font-weight: 900;
+  letter-spacing: .06em;
+  margin: 4px 0 10px 0;
 }
 
-.kid .totRow.big {
-  font-size: 32px;
+.field { display: grid; gap: 6px; margin-bottom: 10px; }
+.field label { color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+.field input, .field select {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0d1016;
+  color: var(--text);
+  font-weight: 700;
+}
+.hint { color: var(--muted); padding: 6px 0 10px; }
+
+.adminGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.adminActions {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0 12px;
 }
 
-/* =========================
-   Responsive / Tablet
-   ========================= */
+.rowWrap{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
 
-@media (max-width: 1000px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
+.hrLine{
+  border:0;
+  border-top:1px solid var(--line);
+  margin:12px 0;
+}
 
-  .paySummary {
-    grid-template-columns: 1fr;
-  }
+.listBox{
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0d1016;
+  margin-top: 8px;
+}
 
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+/* Kid mode tweaks */
+.kid .totRow.big { font-size: 28px; }
+.kid .moneyBtn .val { font-size: 26px; }
+.kid .grid { grid-template-columns: repeat(3, 1fr); }
+.kid .scanRow { display: none; }
+
+/* Responsive */
+@media (max-width: 980px) {
+  .layout { grid-template-columns: 1fr; }
+  .paySummary { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: repeat(3, 1fr); }
+  .adminGrid { grid-template-columns: 1fr; }
+  .printRow { grid-template-columns: 1fr; }
 }
