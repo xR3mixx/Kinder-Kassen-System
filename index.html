@@ -8,10 +8,6 @@
 </head>
 
 <body>
-  <noscript style="display:block;padding:12px;background:#ffeb3b;color:#000;font-family:system-ui,sans-serif">
-    Bitte JavaScript aktivieren – sonst funktioniert die Kinderkassa nicht.
-  </noscript>
-
   <header class="topbar">
     <div class="brand">
       <div class="logo">🧾</div>
@@ -123,7 +119,6 @@
         <div class="grid" id="notesGrid"></div>
       </div>
 
-      <!-- WICHTIG: beide Buttons sind fix vorhanden -->
       <div class="printRow">
         <button class="btn primary" id="paidBtn" type="button">BEZAHLT ✅</button>
         <button class="btn primary" id="printBtn" type="button">BON DRUCKEN 🧾</button>
@@ -140,8 +135,9 @@
         <button class="btn subtle" id="closeAdmin" type="button">Schließen</button>
       </div>
 
-      <!-- Scrollbarer Inhalt -->
+      <!-- Scrollbarer Inhalt (Header bleibt fix) -->
       <div class="modalBody">
+
         <div id="adminLocked">
           <div class="field" style="padding:12px">
             <label>PIN</label>
@@ -290,24 +286,39 @@
     </div>
   </div>
 
-  <!-- WICHTIG: defer verhindert "Element nicht gefunden" Bugs -->
+  <!-- app.js lädt wie gehabt -->
   <script src="app.js" defer></script>
 
-  <!-- Optional: Fokus-Hilfe (falls app.js das nicht schon macht)
-       -> lässt Scanner immer ins Feld schreiben, wenn nichts anderes aktiv ist -->
+  <!-- iPad Fix: Tastatur nicht öffnen bei "Bezahlt" / "Bon drucken" -->
   <script>
-    (function () {
-      const scan = () => document.getElementById("scanInput");
-      window.addEventListener("click", () => {
-        const el = scan();
-        if (!el) return;
-        const active = document.activeElement;
-        const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
-        if (!isInput && !document.getElementById("adminBackdrop")?.classList.contains("hidden")) return;
-        if (!isInput) el.focus({ preventScroll: true });
-      });
-    })();
+    window.addEventListener("DOMContentLoaded", () => {
+      const scan = document.getElementById("scanInput");
+      const paid = document.getElementById("paidBtn");
+      const print = document.getElementById("printBtn");
+      const adminBackdrop = document.getElementById("adminBackdrop");
+
+      function hideKeyboard() {
+        // Fokus weg -> iOS Tastatur zu
+        try { document.activeElement && document.activeElement.blur(); } catch(e) {}
+        try { scan && scan.blur(); } catch(e) {}
+      }
+
+      // Capture = wir sind schneller als app.js, falls es scanInput wieder fokussiert
+      if (paid) paid.addEventListener("click", hideKeyboard, true);
+      if (print) print.addEventListener("click", hideKeyboard, true);
+
+      // Optional: Wenn Admin offen ist, nie Scan-Fokus erzwingen
+      document.addEventListener("click", (ev) => {
+        if (!scan) return;
+        const adminOpen = adminBackdrop && !adminBackdrop.classList.contains("hidden");
+        if (adminOpen) return;
+
+        const t = ev.target;
+        const isTyping =
+          t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+        if (isTyping) return;
+      }, { capture: true });
+    });
   </script>
 </body>
 </html>
-
