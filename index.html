@@ -6,27 +6,24 @@
   <title>Kinderkassa</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
-  <div id="rotateOverlay" class="rotateOverlay hidden">
-    <div class="rotateBox">
-      <div style="font-size:40px">🔄</div>
-      <div style="font-weight:900;margin-top:8px">Bitte Tablet drehen</div>
-      <div style="opacity:.75;margin-top:6px">Querformat für die Kassa 🙂</div>
-    </div>
-  </div>
+  <noscript style="display:block;padding:12px;background:#ffeb3b;color:#000;font-family:system-ui,sans-serif">
+    Bitte JavaScript aktivieren – sonst funktioniert die Kinderkassa nicht.
+  </noscript>
 
   <header class="topbar">
     <div class="brand">
       <div class="logo">🧾</div>
       <div>
         <div class="title">KINDERKASSA</div>
-        <div class="subtitle">Raspberry Pi · Tablet Browser</div>
+        <div class="subtitle">Raspberry Pi · iPad Browser</div>
       </div>
     </div>
 
     <div class="top-right">
       <div class="clock" id="clock">--:--</div>
-      <button class="btn" id="adminBtn">ADMIN (PIN)</button>
+      <button class="btn" id="adminBtn" type="button">ADMIN (PIN)</button>
     </div>
   </header>
 
@@ -36,7 +33,7 @@
       <div class="panel-head">
         <div class="panel-title" id="cartTitle">WARENKORB 🛒</div>
         <div class="panel-actions">
-          <button class="btn subtle" id="clearCartBtn">Warenkorb leeren</button>
+          <button class="btn subtle" id="clearCartBtn" type="button">Warenkorb leeren</button>
         </div>
       </div>
 
@@ -46,9 +43,11 @@
           class="scanInput"
           inputmode="numeric"
           autocomplete="off"
-          placeholder="EAN scannen/eintippen und Enter…"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="Code scannen/eintippen (EAN-8 / EAN-13) und Enter…"
         />
-        <button class="btn" id="addByEanBtn">Hinzufügen</button>
+        <button class="btn" id="addByEanBtn" type="button">Hinzufügen</button>
       </div>
 
       <div class="tableWrap">
@@ -78,8 +77,8 @@
       </div>
 
       <div class="bottomActions">
-        <button class="btn danger" id="stornoLastBtn">Letzten Artikel entfernen</button>
-        <button class="btn" id="newReceiptBtn">Neuer Bon</button>
+        <button class="btn danger" id="stornoLastBtn" type="button">Letzten Artikel entfernen</button>
+        <button class="btn" id="newReceiptBtn" type="button">Neuer Bon</button>
       </div>
     </section>
 
@@ -105,9 +104,9 @@
       </div>
 
       <div class="payButtonsTop">
-        <button class="btn big" id="btnExact">PASSEND ✅</button>
-        <button class="btn big subtle" id="btnUndo">LETZTES ZURÜCK ⬅︎</button>
-        <button class="btn big subtle" id="btnResetGiven">RESET ↺</button>
+        <button class="btn big" id="btnExact" type="button">PASSEND ✅</button>
+        <button class="btn big subtle" id="btnUndo" type="button">LETZTES ZURÜCK ⬅︎</button>
+        <button class="btn big subtle" id="btnResetGiven" type="button">RESET ↺</button>
       </div>
 
       <div class="denomWrap">
@@ -124,154 +123,191 @@
         <div class="grid" id="notesGrid"></div>
       </div>
 
-    <div class="printRow">
-  <button class="btn primary" id="btnPaid">BEZAHLT ✅</button>
-  <button class="btn subtle" id="printBtn">BON DRUCKEN 🧾</button>
-  <div class="msg" id="msg"></div>
-</div>
-
-   </section>
+      <!-- WICHTIG: beide Buttons sind fix vorhanden -->
+      <div class="printRow">
+        <button class="btn primary" id="paidBtn" type="button">BEZAHLT ✅</button>
+        <button class="btn primary" id="printBtn" type="button">BON DRUCKEN 🧾</button>
+        <div class="msg" id="msg"></div>
+      </div>
+    </section>
   </main>
 
   <!-- Admin Modal -->
-  <div class="modalBackdrop hidden" id="adminBackdrop">
-    <div class="modal">
+  <div class="modalBackdrop hidden" id="adminBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Admin">
       <div class="modalHead">
         <div class="modalTitle">ADMIN</div>
-        <button class="btn subtle" id="closeAdmin">Schließen</button>
+        <button class="btn subtle" id="closeAdmin" type="button">Schließen</button>
       </div>
 
-      <div id="adminLocked">
-        <div class="field" style="padding:12px">
-          <label>PIN</label>
-          <input id="pinInput" type="password" inputmode="numeric" placeholder="PIN eingeben" />
-        </div>
-        <div style="padding:0 12px 12px">
-          <button class="btn primary" id="pinLoginBtn">Entsperren</button>
-        </div>
-        <div class="hint">Standard-PIN: <b>1234</b></div>
-      </div>
-
-      <div id="adminUnlocked" class="hidden adminScroll">
-
-        <div class="adminGrid">
-          <div class="field">
-            <label>UI-Modus</label>
-            <select id="uiModeSelect">
-              <option value="standard">Standard</option>
-              <option value="kid">Kindermodus</option>
-            </select>
+      <!-- Scrollbarer Inhalt -->
+      <div class="modalBody">
+        <div id="adminLocked">
+          <div class="field" style="padding:12px">
+            <label>PIN</label>
+            <input id="pinInput" type="password" inputmode="numeric" placeholder="PIN eingeben" />
           </div>
-
-          <div class="field">
-            <label>Cent-Buttons</label>
-            <select id="centModeSelect">
-              <option value="all">Alle (1/2/5/10/20/50 Cent)</option>
-              <option value="coarse">Grob (10/20/50 Cent)</option>
-              <option value="none">Aus (keine Cent)</option>
-            </select>
+          <div style="padding:0 12px 12px">
+            <button class="btn primary" id="pinLoginBtn" type="button">Entsperren</button>
           </div>
-
-          <div class="field">
-            <label>Große Scheine (100/200/500)</label>
-            <select id="bigNotesSelect">
-              <option value="off">Aus</option>
-              <option value="on">Ein</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Bestätigung bei großen Scheinen</label>
-            <select id="confirmBigNotesSelect">
-              <option value="on">Ein</option>
-              <option value="off">Aus</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Sound (Piep)</label>
-            <select id="soundSelect">
-              <option value="on">Ein</option>
-              <option value="off">Aus</option>
-            </select>
-          </div>
+          <div class="hint">Standard-PIN: <b>1234</b> (kannst du im Code ändern)</div>
         </div>
 
-        <div class="adminActions">
-          <button class="btn" id="saveSettingsBtn">Speichern</button>
-          <button class="btn danger" id="logoutAdminBtn">Admin sperren</button>
-        </div>
+        <div id="adminUnlocked" class="hidden">
 
-        <hr style="border:0;border-top:1px solid var(--line);margin:0">
-
-        <div style="padding:12px">
-          <div class="modalTitle" style="margin-bottom:8px">ARTIKEL VERWALTEN</div>
-
+          <!-- SETTINGS -->
           <div class="adminGrid">
             <div class="field">
-              <label>EAN (8 oder 13 Stellen)</label>
-              <input id="prodEanInput" inputmode="numeric" placeholder="EAN scannen/eintippen" />
+              <label>UI-Modus</label>
+              <select id="uiModeSelect">
+                <option value="standard">Standard</option>
+                <option value="kid">Kindermodus</option>
+              </select>
             </div>
 
             <div class="field">
-              <label>Artikelname</label>
-              <input id="prodNameInput" placeholder="z. B. Apfel" />
+              <label>Cent-Buttons</label>
+              <select id="centModeSelect">
+                <option value="all">Alle (1/2/5/10/20/50 Cent)</option>
+                <option value="coarse">Grob (10/20/50 Cent)</option>
+                <option value="none">Aus (keine Cent)</option>
+              </select>
             </div>
 
             <div class="field">
-              <label>Preis (€) (z. B. 1,20)</label>
-              <input id="prodPriceInput" inputmode="decimal" placeholder="z. B. 1,20" />
+              <label>Große Scheine (100/200/500)</label>
+              <select id="bigNotesSelect">
+                <option value="off">Aus</option>
+                <option value="on">Ein</option>
+              </select>
             </div>
 
             <div class="field">
-              <label>Aktion</label>
-              <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <button class="btn primary" id="prodSaveBtn">Speichern</button>
-                <button class="btn danger" id="prodDeleteBtn">Löschen</button>
+              <label>Bestätigung bei großen Scheinen</label>
+              <select id="confirmBigNotesSelect">
+                <option value="on">Ein</option>
+                <option value="off">Aus</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Sound (Piep)</label>
+              <select id="soundSelect">
+                <option value="on">Ein</option>
+                <option value="off">Aus</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Auto-Bon bei „Bezahlt“</label>
+              <select id="autoPrintSelect">
+                <option value="off">Aus</option>
+                <option value="on">Ein</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="adminActions">
+            <button class="btn" id="saveSettingsBtn" type="button">Speichern</button>
+            <button class="btn danger" id="logoutAdminBtn" type="button">Admin sperren</button>
+          </div>
+
+          <hr style="border:0;border-top:1px solid var(--line);margin:0">
+
+          <!-- PRODUCT MANAGEMENT -->
+          <div style="padding:12px">
+            <div class="modalTitle" style="margin-bottom:8px">ARTIKEL VERWALTEN</div>
+
+            <div class="adminGrid">
+              <div class="field">
+                <label>Code (EAN-8 oder EAN-13)</label>
+                <input id="prodEanInput" inputmode="numeric" placeholder="7/8 oder 12/13 Stellen" />
+              </div>
+
+              <div class="field">
+                <label>Artikelname</label>
+                <input id="prodNameInput" placeholder="z. B. Apfel" />
+              </div>
+
+              <div class="field">
+                <label>Preis (€) (z. B. 1,20)</label>
+                <input id="prodPriceInput" inputmode="decimal" placeholder="z. B. 1,20" />
+              </div>
+
+              <div class="field">
+                <label>Aktion</label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <button class="btn" id="prodCalcCheckBtn" type="button">Prüfziffer berechnen</button>
+                  <button class="btn primary" id="prodSaveBtn" type="button">Speichern</button>
+                  <button class="btn danger" id="prodDeleteBtn" type="button">Löschen</button>
+                </div>
               </div>
             </div>
+
+            <div class="hint" id="prodHint" style="padding-top:0">
+              Tipp: 7 Stellen → EAN-8, 12 Stellen → EAN-13 (Prüfziffer berechnen).
+            </div>
+
+            <div class="field" style="padding-top:6px">
+              <label>Suche / Liste (klick zum Laden)</label>
+              <input id="prodSearchInput" placeholder="Suche nach Name oder Code…" />
+            </div>
+
+            <div style="max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#0d1016;margin-top:8px">
+              <table class="cartTable" style="margin:0">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Artikel</th>
+                    <th class="right">Preis</th>
+                  </tr>
+                </thead>
+                <tbody id="prodListBody"></tbody>
+              </table>
+            </div>
+
+            <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
+
+            <!-- CSV IMPORT/EXPORT -->
+            <div class="modalTitle" style="margin-bottom:8px">IMPORT / EXPORT</div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn" id="exportCsvBtn" type="button">📤 Export CSV</button>
+
+              <label class="btn" style="cursor:pointer">
+                📥 Import CSV
+                <input type="file" id="importCsvInput" accept=".csv" hidden>
+              </label>
+            </div>
+
+            <div class="hint" id="csvHint" style="padding-top:8px">
+              CSV-Format: <b>code;name;preis</b> (Code = EAN-8 oder EAN-13)
+            </div>
           </div>
 
-          <div class="hint" id="prodHint" style="padding-top:0"></div>
-
-          <div class="field" style="padding-top:6px">
-            <label>Suche / Liste (klick zum Laden)</label>
-            <input id="prodSearchInput" placeholder="Suche nach Name oder EAN…" />
-          </div>
-
-          <div style="max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#0d1016;margin-top:8px">
-            <table class="cartTable" style="margin:0">
-              <thead>
-              <tr>
-                <th>EAN</th>
-                <th>Artikel</th>
-                <th class="right">Preis</th>
-              </tr>
-              </thead>
-              <tbody id="prodListBody"></tbody>
-            </table>
-          </div>
-
-          <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
-
-          <div class="modalTitle" style="margin-bottom:8px">IMPORT / EXPORT</div>
-
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn" id="exportCsvBtn">📤 Export CSV</button>
-            <label class="btn" style="cursor:pointer">
-              📥 Import CSV
-              <input type="file" id="importCsvInput" accept=".csv" hidden>
-            </label>
-          </div>
-
-          <div class="hint" id="csvHint" style="padding-top:8px"></div>
-          <div class="hint" style="padding-top:0">CSV-Format: <b>ean;name;preis</b></div>
         </div>
-
       </div>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- WICHTIG: defer verhindert "Element nicht gefunden" Bugs -->
+  <script src="app.js" defer></script>
+
+  <!-- Optional: Fokus-Hilfe (falls app.js das nicht schon macht)
+       -> lässt Scanner immer ins Feld schreiben, wenn nichts anderes aktiv ist -->
+  <script>
+    (function () {
+      const scan = () => document.getElementById("scanInput");
+      window.addEventListener("click", () => {
+        const el = scan();
+        if (!el) return;
+        const active = document.activeElement;
+        const isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+        if (!isInput && !document.getElementById("adminBackdrop")?.classList.contains("hidden")) return;
+        if (!isInput) el.focus({ preventScroll: true });
+      });
+    })();
+  </script>
 </body>
 </html>
+
