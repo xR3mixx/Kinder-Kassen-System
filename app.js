@@ -1,16 +1,17 @@
 // =====================
 // KKS – Kinderkassa Web App (v1.1.2)
 // - Scanner via SSE (/events)
-// - EAN-8 + EAN-13
-// - Produkte laden aus products.json (+ localStorage Overrides)
+// - EAN-8 + EAN-13 (Pruefziffer-check)
+// - Produkte aus products.json + localStorage Overrides
 // - BEZAHLT: druckt echten Bon (/print) und startet neuen Bon
 // - BON DRUCKEN: druckt nur (ohne neuen Bon)
+// - Dezimalzahlen im Admin an/aus
 // =====================
 
 // --- Admin PIN ---
 const ADMIN_PIN = "1234";
 
-// --- Dateiname für Produkte ---
+// --- Dateiname fuer Produkte ---
 const PRODUCTS_JSON_URL = "products.json"; // muss im selben Ordner liegen
 
 // --- localStorage keys ---
@@ -24,7 +25,7 @@ const defaultSettings = {
   bigNotes: "off",        // "on" | "off"
   confirmBigNotes: "on",  // "on" | "off"
   sound: "on",            // "on" | "off"
-  decimals: "on",         // "on" | "off"  ✅ Dezimalzahlen An/Aus
+  decimals: "on",         // "on" | "off"
 };
 
 function loadSettings() {
@@ -32,7 +33,7 @@ function loadSettings() {
     const raw = localStorage.getItem(LS_SETTINGS);
     if (!raw) return { ...defaultSettings };
     return { ...defaultSettings, ...JSON.parse(raw) };
-  } catch {
+  } catch (e) {
     return { ...defaultSettings };
   }
 }
@@ -46,7 +47,7 @@ function loadOverrides() {
     const raw = localStorage.getItem(LS_PRODUCTS_OVERRIDES);
     if (!raw) return {};
     return JSON.parse(raw) || {};
-  } catch {
+  } catch (e) {
     return {};
   }
 }
@@ -64,25 +65,25 @@ function clampInt(n) {
   return Math.trunc(n);
 }
 function eur(cents) {
+  // Anzeige in der UI
   if (settings.decimals === "off") {
-    // nur ganze € anzeigen
     const euros = Math.round(cents / 100);
-    return `${euros} €`;
+    return String(euros) + " €";
   }
   const v = (cents / 100).toFixed(2).replace(".", ",");
-  return `${v} €`;
+  return v + " €";
 }
 function nowClock() {
   const d = new Date();
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return hh + ":" + mm;
 }
 function parseEuroToCents(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
 
-  // Wenn Dezimal AUS: nur ganze Zahlen erlauben (1, 2, 10)
+  // Wenn Dezimal AUS: nur ganze Zahlen
   if (settings.decimals === "off") {
     const n = Number(raw.replace(/\s/g, ""));
     if (!Number.isFinite(n) || n < 0) return null;
@@ -119,7 +120,7 @@ function isValidEan13(ean13) {
 function ean8CheckDigit(base7) {
   const s = onlyDigits(base7);
   if (s.length !== 7) return null;
-  // weights: 3,1,3,1,3,1,3 on positions 0..6
+  // weights: 3,1,3,1,3,1,3
   let sum = 0;
   for (let i = 0; i < 7; i++) {
     const d = parseInt(s[i], 10);
@@ -137,7 +138,7 @@ function isValidEan8(ean8) {
   return cd === parseInt(s[7], 10);
 }
 
-// normalize: akzeptiert 7/8/12/13 → gibt 8 oder 13 zurück
+// normalize: akzeptiert 7/8/12/13 -> gibt 8 oder 13 zurueck
 function normalizeCode(codeInput) {
   const s = onlyDigits(codeInput);
 
@@ -169,6 +170,8 @@ function isValidCode(code) {
 let audioCtx = null;
 let audioUnlocked = false;
 
+let settings = loadSettings();
+
 function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
@@ -185,42 +188,42 @@ function unlockAudioOnce() {
     osc.start();
     osc.stop(ctx.currentTime + 0.01);
     audioUnlocked = true;
-  } catch {}
+  } catch (e) {}
 }
-function playTone(freq, ms, volume = 0.08, type = "square") {
+function playTone(freq, ms, volume, type) {
   if (settings.sound !== "on") return;
   try {
     const ctx = ensureAudio();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = type;
+    osc.type = type || "square";
     osc.frequency.value = freq;
 
     const t0 = ctx.currentTime;
+    const dur = ms / 1000;
+
     gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.01);
-    gain.gain.setValueAtTime(volume, t0 + ms / 1000 - 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
+    gain.gain.exponentialRampToValueAtTime(volume || 0.08, t0 + 0.01);
+    gain.gain.setValueAtTime(volume || 0.08, t0 + Math.max(0.01, dur - 0.02));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(t0 + ms / 1000);
-  } catch {}
+    osc.stop(t0 + dur);
+  } catch (e) {}
 }
 function soundScanOk()  { playTone(1800, 70, 0.08, "square"); }
 function soundError()   { playTone(220, 180, 0.10, "sawtooth"); }
 function soundPrintOk() {
   playTone(1200, 60, 0.07, "sine");
-  setTimeout(() => playTone(1500, 60, 0.07, "sine"), 70);
+  setTimeout(function () { playTone(1500, 60, 0.07, "sine"); }, 70);
 }
 
 // --- State ---
-let settings = loadSettings();
-
-let PRODUCTS_BASE = {};         // aus products.json
-let PRODUCTS_OVERRIDES = loadOverrides(); // admin changes
-let PRODUCTS = {};              // merged
+let PRODUCTS_BASE = {};
+let PRODUCTS_OVERRIDES = loadOverrides();
+let PRODUCTS = {};
 
 let cart = []; // {code, name, unitCents, qty}
 let givenCents = 0;
@@ -252,11 +255,10 @@ const stornoLastBtn = document.getElementById("stornoLastBtn");
 const newReceiptBtn = document.getElementById("newReceiptBtn");
 const printBtn = document.getElementById("printBtn");
 
-// Buttons in Payment area
 const btnExact = document.getElementById("btnExact");
 const btnUndo = document.getElementById("btnUndo");
 const btnResetGiven = document.getElementById("btnResetGiven");
-const btnPaid = document.getElementById("btnPaid"); // ✅ BEZAHLT Button (muss im HTML existieren)
+const btnPaid = document.getElementById("btnPaid"); // muss im HTML existieren
 
 const coinsGrid = document.getElementById("coinsGrid");
 const notesGrid = document.getElementById("notesGrid");
@@ -279,7 +281,7 @@ const centModeSelect = document.getElementById("centModeSelect");
 const bigNotesSelect = document.getElementById("bigNotesSelect");
 const confirmBigNotesSelect = document.getElementById("confirmBigNotesSelect");
 const soundSelect = document.getElementById("soundSelect");
-const decimalsSelect = document.getElementById("decimalsSelect"); // ✅ Dezimal An/Aus (muss im HTML existieren)
+const decimalsSelect = document.getElementById("decimalsSelect");
 
 // Product admin
 const prodEanInput = document.getElementById("prodEanInput");
@@ -298,21 +300,21 @@ const importCsvInput = document.getElementById("importCsvInput");
 const csvHint = document.getElementById("csvHint");
 
 // --- UI messages ---
-function setMsg(text, ok = true) {
+function setMsg(text, ok) {
+  if (!msgEl) return;
   msgEl.textContent = text || "";
-  msgEl.style.color = ok ? "var(--muted)" : "#ffb4b4";
+  msgEl.style.color = (ok === false) ? "#ffb4b4" : "var(--muted)";
 }
-function setProdHint(text, ok = true) {
+function setProdHint(text, ok) {
   if (!prodHint) return;
   prodHint.textContent = text || "";
-  prodHint.style.color = ok ? "var(--muted)" : "#ffb4b4";
+  prodHint.style.color = (ok === false) ? "#ffb4b4" : "var(--muted)";
 }
-function setCsvHint(text, ok = true) {
+function setCsvHint(text, ok) {
   if (!csvHint) return;
   csvHint.textContent = text || "";
-  csvHint.style.color = ok ? "var(--muted)" : "#ffb4b4";
+  csvHint.style.color = (ok === false) ? "#ffb4b4" : "var(--muted)";
 }
-
 function setScannerState(ok) {
   if (!scannerStateEl) return;
   scannerStateEl.textContent = ok ? "Scanner verbunden ✅" : "Scanner getrennt ❌";
@@ -329,36 +331,34 @@ async function loadProductsJson() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
 
-    // Erwartet: { "EAN": { "name":"", "price": 50 } } oder price in Cent
-    // Wenn price als Euro-String kommt: wir wandeln.
+    // Erwartet: { "EAN": { "name":"", "price": 123 } } (Cent)
+    // oder price als Euro-String
     const normalized = {};
-    for (const [k, v] of Object.entries(data || {})) {
+    for (const k in (data || {})) {
+      if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+      const v = data[k];
+
       const code = normalizeCode(k);
       if (!code) continue;
 
-      const name = String(v?.name ?? "").trim();
+      const name = String((v && v.name) ? v.name : "").trim();
       if (!name) continue;
 
       let priceCents = null;
-
-      if (typeof v?.price === "number") {
-        // wenn Zahl: annehmen Cent wenn > 20 oder wenn integer? -> wir nehmen Cent, wenn ganzzahlig.
-        // Empfohlen: price in Cent
+      if (typeof (v && v.price) === "number") {
         priceCents = Math.round(v.price);
       } else {
-        // wenn String: Euro
-        priceCents = parseEuroToCents(v?.price);
+        priceCents = parseEuroToCents(v && v.price);
       }
       if (priceCents === null) continue;
 
-      normalized[code] = { name, price: priceCents };
+      normalized[code] = { name: name, price: priceCents };
     }
 
     PRODUCTS_BASE = normalized;
     mergeProducts();
     return true;
   } catch (e) {
-    // fallback: leer lassen, Overrides bleiben
     PRODUCTS_BASE = {};
     mergeProducts();
     return false;
@@ -367,7 +367,9 @@ async function loadProductsJson() {
 
 // --- Cart computations ---
 function cartTotalCents() {
-  return cart.reduce((sum, it) => sum + it.unitCents * it.qty, 0);
+  return cart.reduce(function (sum, it) {
+    return sum + it.unitCents * it.qty;
+  }, 0);
 }
 
 // --- Cart ops ---
@@ -379,24 +381,24 @@ function addItemByCode(codeRaw) {
     return;
   }
   if (!isValidCode(code)) {
-    setMsg("Prüfziffer ungültig (EAN-8/EAN-13)", false);
+    setMsg("Pruefziffer ungueltig (EAN-8/EAN-13)", false);
     soundError();
     return;
   }
 
   const p = PRODUCTS[code];
   if (!p) {
-    setMsg(`Code nicht gefunden: ${code}`, false);
+    setMsg("Code nicht gefunden: " + code, false);
     soundError();
     return;
   }
 
-  const existing = cart.find(x => x.code === code);
+  const existing = cart.find(function (x) { return x.code === code; });
   if (existing) existing.qty += 1;
-  else cart.push({ code, name: p.name, unitCents: p.price, qty: 1 });
+  else cart.push({ code: code, name: p.name, unitCents: p.price, qty: 1 });
 
   soundScanOk();
-  setMsg(`${p.name} hinzugefügt`);
+  setMsg(p.name + " hinzugefuegt", true);
   render();
 }
 
@@ -411,7 +413,7 @@ function removeOneIndex(i) {
 function clearCart() {
   cart = [];
   resetGiven();
-  setMsg("Warenkorb geleert");
+  setMsg("Warenkorb geleert", true);
   render();
 }
 
@@ -420,7 +422,7 @@ function stornoLast() {
   const last = cart[cart.length - 1];
   last.qty -= 1;
   if (last.qty <= 0) cart.pop();
-  setMsg("Letzten Artikel entfernt");
+  setMsg("Letzten Artikel entfernt", true);
   render();
 }
 
@@ -429,7 +431,7 @@ function newReceipt() {
   resetGiven();
   moneyTapHistory = [];
   moneyCounters.clear();
-  setMsg("Neuer Bon gestartet");
+  setMsg("Neuer Bon gestartet", true);
   render();
 }
 
@@ -439,7 +441,7 @@ function tapMoney(denomCents) {
   if (denomCents <= 0) return;
 
   if ((denomCents >= 10000) && settings.confirmBigNotes === "on") {
-    const ok = confirm(`Wirklich ${eur(denomCents)} gegeben?`);
+    const ok = confirm("Wirklich " + eur(denomCents) + " gegeben?");
     if (!ok) return;
   }
 
@@ -485,7 +487,7 @@ function setExact() {
 // DRUCKEN (REAL PRINTER)
 // =====================
 
-// -> schickt Text an bridge.py (/print). Bridge macht CRLF + Papier-Vorlauf.
+// -> schickt Text an bridge.py (/print). Bridge macht CRLF + Papier-Vorschub.
 async function printToRealPrinter(receiptText) {
   try {
     const res = await fetch("/print", {
@@ -495,45 +497,49 @@ async function printToRealPrinter(receiptText) {
     });
 
     if (!res.ok) return false;
-    const data = await res.json().catch(() => null);
+    const data = await res.json().catch(function () { return null; });
     return !!(data && data.ok);
   } catch (e) {
     return false;
   }
 }
 
-// Baut den Bon-Text aus dem aktuellen Warenkorb
+// Bon-Text fuer Drucker bauen (bewusst ASCII: "EUR" statt "€")
 function buildReceiptText() {
   const total = cartTotalCents();
-
   const d = new Date();
   const dateStr = d.toLocaleDateString("de-AT");
   const timeStr = d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
 
   const lines = [];
   lines.push("KINDERLADEN");
-  lines.push(`${dateStr} ${timeStr}`);
+  lines.push(dateStr + " " + timeStr);
   lines.push("--------------------------------");
 
-  cart.forEach(it => {
-    // kurze, robuste Zeile: "Name x2   1,00 €"
-    const sum = eur(it.unitCents * it.qty);
-    lines.push(`${it.name} x${it.qty}  ${sum}`);
+  cart.forEach(function (it) {
+    const sumCents = it.unitCents * it.qty;
+    const sum = (sumCents / 100).toFixed(2);
+    // kurz & stabil (Bondrucker)
+    lines.push(it.name + " x" + it.qty + "  " + sum + " EUR");
   });
 
   lines.push("--------------------------------");
-  lines.push(`SUMME:   ${eur(total)}`);
-  lines.push(`GEGEBEN: ${eur(givenCents)}`);
-  lines.push(`RUECKG.: ${eur(givenCents - total)}`);
+  lines.push("SUMME:   " + (total / 100).toFixed(2) + " EUR");
+  lines.push("GEGEBEN: " + (givenCents / 100).toFixed(2) + " EUR");
+  lines.push("RUECKG.: " + ((givenCents - total) / 100).toFixed(2) + " EUR");
   lines.push("--------------------------------");
-  lines.push("Danke fürs Einkaufen! :)");
+  lines.push("Danke fuers Einkaufen! :)");
 
-  // Bridge macht CRLF + extra Vorschub,
-  // hier bleiben wir simpel bei \n
+  // ein paar Leerzeilen (falls Autocut/Abreisskante)
+  lines.push("");
+  lines.push("");
+  lines.push("");
+
+  // Bridge macht CRLF + extra Vorschub, hier bleiben wir bei \n
   return lines.join("\n");
 }
 
-// Manuell: "BON DRUCKEN" druckt nur – startet NICHT automatisch neu
+// BON DRUCKEN: druckt nur - startet NICHT neu
 async function manualPrint() {
   const total = cartTotalCents();
   if (total <= 0) {
@@ -542,20 +548,20 @@ async function manualPrint() {
     return;
   }
 
-  setMsg("Drucke Bon…");
+  setMsg("Drucke Bon...", true);
   const ok = await printToRealPrinter(buildReceiptText());
 
   if (!ok) {
-    setMsg("Drucker nicht erreichbar – Kabel/Port prüfen", false);
+    setMsg("Drucker nicht erreichbar - Kabel/Port pruefen", false);
     soundError();
     return;
   }
 
   soundPrintOk();
-  setMsg("Bon gedruckt 🧾");
+  setMsg("Bon gedruckt", true);
 }
 
- // ✅ BEZAHLT: prüfen → drucken → NEUER BON
+// BEZAHLT: pruefen -> drucken -> NEUER BON
 async function payAndPrint() {
   const total = cartTotalCents();
 
@@ -566,86 +572,35 @@ async function payAndPrint() {
   }
 
   if (givenCents < total) {
-    setMsg("Noch zu wenig Geld 😊", false);
+    setMsg("Noch zu wenig Geld :)", false);
     soundError();
     return;
   }
 
-  setMsg("Bezahlt ✅ Drucke Bon…");
+  setMsg("Bezahlt - drucke Bon...", true);
 
-  // 🔴 WICHTIG: await + Funktionsaufruf IN EINER ZEILE
   const ok = await printToRealPrinter(buildReceiptText());
 
   if (!ok) {
-    setMsg("Drucker nicht erreichbar – Kabel/Port prüfen", false);
+    setMsg("Drucker nicht erreichbar - bitte Kabel/Port pruefen", false);
     soundError();
     return;
   }
 
   soundPrintOk();
-  setMsg("Bon gedruckt 🧾 Neuer Bon gestartet ✅");
+  setMsg("Bon gedruckt - neuer Bon gestartet", true);
 
-  // ✅ wirklich neuer Bon
+  // wirklich neu starten
   newReceipt();
-}
-
-// ✅ BON DRUCKEN: nur drucken
-async function manualPrint() {
-  const total = cartTotalCents();
-  if (total <= 0) {
-    setMsg("Warenkorb ist leer", false);
-    soundError();
-    return;
-  }
-  if (givenCents < total) {
-    setMsg("Noch zu wenig Geld 😊", false);
-    soundError();
-    return;
-  }
-
-  setMsg("Drucke Bon…");
-  const ok = await printToRealPrinter(buildReceiptText());
-  if (!ok) {
-    setMsg("Drucker nicht erreichbar – bitte Kabel/Port prüfen", false);
-    soundError();
-    return;
-  }
-  soundPrintOk();
-  setMsg("Bon gedruckt 🧾");
-}
-
-// ✅ BEZAHLT: prüfen → drucken → neuer Bon
-async function payAndPrint() {
-  const total = cartTotalCents();
-  if (total <= 0) {
-    setMsg("Warenkorb ist leer", false);
-    soundError();
-    return;
-  }
-  if (givenCents < total) {
-    setMsg("Noch zu wenig Geld 😊", false);
-    soundError();
-    return;
-  }
-
-  setMsg("Drucke Bon…");
-  const ok = await printToRealPrinter(buildReceiptText());
-
-  if (!ok) {
-    setMsg("Drucker nicht erreichbar – bitte Kabel/Port prüfen", false);
-    soundError();
-    return;
-  }
-
-  soundPrintOk();
-  setMsg("Bezahlt ✅ Neuer Bon…");
-  setTimeout(() => newReceipt(), 250);
+  if (scanInput) scanInput.focus();
 }
 
 // --- Rendering ---
 function renderCart() {
+  if (!cartBody) return;
   cartBody.innerHTML = "";
-  cart.forEach((it, idx) => {
+
+  cart.forEach(function (it, idx) {
     const tr = document.createElement("tr");
 
     const tdName = document.createElement("td");
@@ -667,8 +622,8 @@ function renderCart() {
     tdBtn.className = "right";
     const btn = document.createElement("button");
     btn.className = "iconBtn";
-    btn.textContent = "−1";
-    btn.onclick = () => removeOneIndex(idx);
+    btn.textContent = "-1";
+    btn.onclick = function () { removeOneIndex(idx); };
     tdBtn.appendChild(btn);
 
     tr.appendChild(tdName);
@@ -680,21 +635,22 @@ function renderCart() {
     cartBody.appendChild(tr);
   });
 
-  const pos = cart.reduce((n, it) => n + it.qty, 0);
-  posCountEl.textContent = String(pos);
+  const pos = cart.reduce(function (n, it) { return n + it.qty; }, 0);
+  if (posCountEl) posCountEl.textContent = String(pos);
 }
 
 function renderTotalsAndButtons() {
   const total = cartTotalCents();
-  sumTotalEl.textContent = eur(total);
-  sumBoxValue.textContent = eur(total);
-  givenBoxValue.textContent = eur(givenCents);
-  changeBoxValue.textContent = eur(Math.max(0, givenCents - total));
 
-  if (total > 0 && givenCents < total) setMsg("Noch zu wenig Geld 😊", false);
+  if (sumTotalEl) sumTotalEl.textContent = eur(total);
+  if (sumBoxValue) sumBoxValue.textContent = eur(total);
+  if (givenBoxValue) givenBoxValue.textContent = eur(givenCents);
+  if (changeBoxValue) changeBoxValue.textContent = eur(Math.max(0, givenCents - total));
+
+  if (total > 0 && givenCents < total) setMsg("Noch zu wenig Geld :)", false);
   else if (total > 0 && givenCents === total) setMsg("Perfekt passend ✅", true);
-  else if (total > 0 && givenCents > total) setMsg("Rückgeld bitte geben 🙂", true);
-  else setMsg("");
+  else if (total > 0 && givenCents > total) setMsg("Rueckgeld bitte geben :)", true);
+  else setMsg("", true);
 }
 
 function makeMoneyBtn(denomCents) {
@@ -704,20 +660,24 @@ function makeMoneyBtn(denomCents) {
 
   const val = document.createElement("div");
   val.className = "val";
+  // Anzeige ohne Leerzeichen vor €
   val.textContent = eur(denomCents).replace(" €", "€");
 
   const count = document.createElement("div");
   count.className = "count";
   const c = moneyCounters.get(denomCents) || 0;
-  count.textContent = c > 0 ? `x${c}` : " ";
+  count.textContent = c > 0 ? ("x" + c) : " ";
 
   btn.appendChild(val);
   btn.appendChild(count);
-  btn.onclick = () => tapMoney(denomCents);
+
+  btn.onclick = function () { tapMoney(denomCents); };
   return btn;
 }
 
 function renderMoneyButtons() {
+  if (!coinsGrid || !notesGrid) return;
+
   coinsGrid.innerHTML = "";
   notesGrid.innerHTML = "";
 
@@ -725,23 +685,27 @@ function renderMoneyButtons() {
   if (settings.centMode === "coarse") coins = COINS_COARSE;
   if (settings.centMode === "none") coins = [100, 200];
 
-  const notes = [...NOTES_BASE, ...(settings.bigNotes === "on" ? NOTES_BIG : [])];
+  const notes = NOTES_BASE.slice();
+  if (settings.bigNotes === "on") {
+    NOTES_BIG.forEach(function (c) { notes.push(c); });
+  }
 
-  bigNotesHint.textContent =
-    settings.bigNotes === "on"
-      ? "Große Scheine aktiv ✅"
-      : "Große Scheine aus (100/200/500 versteckt)";
+  if (bigNotesHint) {
+    bigNotesHint.textContent = (settings.bigNotes === "on")
+      ? "Grosse Scheine aktiv ✅"
+      : "Grosse Scheine aus (100/200/500 versteckt)";
+  }
 
-  coins.forEach(c => coinsGrid.appendChild(makeMoneyBtn(c)));
-  notes.forEach(c => notesGrid.appendChild(makeMoneyBtn(c)));
+  coins.forEach(function (c) { coinsGrid.appendChild(makeMoneyBtn(c)); });
+  notes.forEach(function (c) { notesGrid.appendChild(makeMoneyBtn(c)); });
 }
 
 function renderMoneyCounters() {
-  document.querySelectorAll(".moneyBtn").forEach(b => {
+  document.querySelectorAll(".moneyBtn").forEach(function (b) {
     const denom = clampInt(b.dataset.denom);
     const c = moneyCounters.get(denom) || 0;
     const countEl = b.querySelector(".count");
-    if (countEl) countEl.textContent = c > 0 ? `x${c}` : " ";
+    if (countEl) countEl.textContent = c > 0 ? ("x" + c) : " ";
   });
 }
 
@@ -750,16 +714,21 @@ function applyUiMode() {
 }
 
 // --- Product list render ---
-function renderProductsList(filter = "") {
+function renderProductsList(filter) {
+  if (!prodListBody) return;
   const f = String(filter || "").trim().toLowerCase();
 
   const entries = Object.entries(PRODUCTS)
-    .map(([code, obj]) => ({ code, name: obj.name, price: obj.price }))
-    .filter(x => !f || x.code.includes(f) || x.name.toLowerCase().includes(f))
-    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+    .map(function (kv) { return { code: kv[0], name: kv[1].name, price: kv[1].price }; })
+    .filter(function (x) {
+      if (!f) return true;
+      return x.code.includes(f) || x.name.toLowerCase().includes(f);
+    })
+    .sort(function (a, b) { return a.name.localeCompare(b.name, "de"); });
 
   prodListBody.innerHTML = "";
-  for (const it of entries) {
+
+  entries.forEach(function (it) {
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
     tr.title = "Klicken zum Laden";
@@ -778,19 +747,18 @@ function renderProductsList(filter = "") {
     tr.appendChild(tdN);
     tr.appendChild(tdP);
 
-    tr.onclick = () => {
-      prodEanInput.value = it.code;
-      prodNameInput.value = it.name;
-      if (settings.decimals === "off") {
-        prodPriceInput.value = String(Math.round(it.price / 100));
-      } else {
-        prodPriceInput.value = (it.price / 100).toFixed(2).replace(".", ",");
+    tr.onclick = function () {
+      if (prodEanInput) prodEanInput.value = it.code;
+      if (prodNameInput) prodNameInput.value = it.name;
+      if (prodPriceInput) {
+        if (settings.decimals === "off") prodPriceInput.value = String(Math.round(it.price / 100));
+        else prodPriceInput.value = (it.price / 100).toFixed(2).replace(".", ",");
       }
-      setProdHint("Artikel geladen. Du kannst ihn ändern und speichern.");
+      setProdHint("Artikel geladen. Du kannst ihn aendern und speichern.", true);
     };
 
     prodListBody.appendChild(tr);
-  }
+  });
 }
 
 function render() {
@@ -799,39 +767,43 @@ function render() {
   renderTotalsAndButtons();
   renderMoneyButtons();
   renderMoneyCounters();
-  renderProductsList(prodSearchInput?.value || "");
-
-  setTimeout(() => scanInput?.focus(), 60);
+  if (prodSearchInput) renderProductsList(prodSearchInput.value || "");
+  setTimeout(function () { if (scanInput) scanInput.focus(); }, 60);
 }
 
 // --- Admin modal logic ---
 function openAdmin() {
+  if (!adminBackdrop) return;
   adminBackdrop.classList.remove("hidden");
-  adminLocked.classList.remove("hidden");
-  adminUnlocked.classList.add("hidden");
-  pinInput.value = "";
-  pinInput.focus();
+  if (adminLocked) adminLocked.classList.remove("hidden");
+  if (adminUnlocked) adminUnlocked.classList.add("hidden");
+  if (pinInput) {
+    pinInput.value = "";
+    pinInput.focus();
+  }
 }
 
 function closeAdminModal() {
+  if (!adminBackdrop) return;
   adminBackdrop.classList.add("hidden");
 }
 
 function loginAdmin() {
+  if (!pinInput) return;
   if (pinInput.value === ADMIN_PIN) {
-    adminLocked.classList.add("hidden");
-    adminUnlocked.classList.remove("hidden");
+    if (adminLocked) adminLocked.classList.add("hidden");
+    if (adminUnlocked) adminUnlocked.classList.remove("hidden");
 
-    uiModeSelect.value = settings.uiMode;
-    centModeSelect.value = settings.centMode;
-    bigNotesSelect.value = settings.bigNotes;
-    confirmBigNotesSelect.value = settings.confirmBigNotes;
-    soundSelect.value = settings.sound;
+    if (uiModeSelect) uiModeSelect.value = settings.uiMode;
+    if (centModeSelect) centModeSelect.value = settings.centMode;
+    if (bigNotesSelect) bigNotesSelect.value = settings.bigNotes;
+    if (confirmBigNotesSelect) confirmBigNotesSelect.value = settings.confirmBigNotes;
+    if (soundSelect) soundSelect.value = settings.sound;
     if (decimalsSelect) decimalsSelect.value = settings.decimals;
 
     renderProductsList("");
-    setProdHint("Bereit. Code scannen/eintippen, Name + Preis eingeben, speichern.");
-    setCsvHint("CSV-Format: ean;name;preis");
+    setProdHint("Bereit. Code scannen/eintippen, Name + Preis eingeben, speichern.", true);
+    setCsvHint("CSV-Format: ean;name;preis", true);
   } else {
     alert("Falscher PIN");
     pinInput.focus();
@@ -839,17 +811,17 @@ function loginAdmin() {
 }
 
 function logoutAdmin() {
-  adminLocked.classList.remove("hidden");
-  adminUnlocked.classList.add("hidden");
-  pinInput.value = "";
+  if (adminLocked) adminLocked.classList.remove("hidden");
+  if (adminUnlocked) adminUnlocked.classList.add("hidden");
+  if (pinInput) pinInput.value = "";
 }
 
 function saveAdminSettings() {
-  settings.uiMode = uiModeSelect.value;
-  settings.centMode = centModeSelect.value;
-  settings.bigNotes = bigNotesSelect.value;
-  settings.confirmBigNotes = confirmBigNotesSelect.value;
-  settings.sound = soundSelect.value;
+  if (uiModeSelect) settings.uiMode = uiModeSelect.value;
+  if (centModeSelect) settings.centMode = centModeSelect.value;
+  if (bigNotesSelect) settings.bigNotes = bigNotesSelect.value;
+  if (confirmBigNotesSelect) settings.confirmBigNotes = confirmBigNotesSelect.value;
+  if (soundSelect) settings.sound = soundSelect.value;
   if (decimalsSelect) settings.decimals = decimalsSelect.value;
 
   saveSettings(settings);
@@ -859,30 +831,30 @@ function saveAdminSettings() {
 
 // --- Product admin actions ---
 function adminCalcCheckDigit() {
-  const digits = onlyDigits(prodEanInput.value);
+  const digits = onlyDigits(prodEanInput ? prodEanInput.value : "");
 
   if (digits.length === 13) {
-    if (isValidEan13(digits)) setProdHint("EAN-13 ist gültig ✅");
-    else { setProdHint("EAN-13 Prüfziffer ist ungültig ❌", false); soundError(); }
+    if (isValidEan13(digits)) setProdHint("EAN-13 ist gueltig ✅", true);
+    else { setProdHint("EAN-13 Pruefziffer ist ungueltig ❌", false); soundError(); }
     return;
   }
   if (digits.length === 8) {
-    if (isValidEan8(digits)) setProdHint("EAN-8 ist gültig ✅");
-    else { setProdHint("EAN-8 Prüfziffer ist ungültig ❌", false); soundError(); }
+    if (isValidEan8(digits)) setProdHint("EAN-8 ist gueltig ✅", true);
+    else { setProdHint("EAN-8 Pruefziffer ist ungueltig ❌", false); soundError(); }
     return;
   }
 
   if (digits.length === 12) {
     const full = normalizeCode(digits);
-    prodEanInput.value = full || digits;
-    setProdHint(`Prüfziffer berechnet (EAN-13): ${prodEanInput.value}`);
+    if (prodEanInput) prodEanInput.value = full || digits;
+    setProdHint("Pruefziffer berechnet (EAN-13): " + (prodEanInput ? prodEanInput.value : ""), true);
     return;
   }
 
   if (digits.length === 7) {
-    const full = normalizeCode(digits);
-    prodEanInput.value = full || digits;
-    setProdHint(`Prüfziffer berechnet (EAN-8): ${prodEanInput.value}`);
+    const full2 = normalizeCode(digits);
+    if (prodEanInput) prodEanInput.value = full2 || digits;
+    setProdHint("Pruefziffer berechnet (EAN-8): " + (prodEanInput ? prodEanInput.value : ""), true);
     return;
   }
 
@@ -891,61 +863,61 @@ function adminCalcCheckDigit() {
 }
 
 function adminSaveProduct() {
-  const code = normalizeCode(prodEanInput.value);
+  const code = normalizeCode(prodEanInput ? prodEanInput.value : "");
   if (!code) { setProdHint("Code muss 7/8 oder 12/13-stellig sein", false); soundError(); return; }
-  if (!isValidCode(code)) { setProdHint("Prüfziffer ungültig (EAN-8/EAN-13)", false); soundError(); return; }
+  if (!isValidCode(code)) { setProdHint("Pruefziffer ungueltig (EAN-8/EAN-13)", false); soundError(); return; }
 
-  const name = String(prodNameInput.value || "").trim();
+  const name = String(prodNameInput ? prodNameInput.value : "").trim();
   if (!name) { setProdHint("Artikelname fehlt", false); soundError(); return; }
 
-  const priceCents = parseEuroToCents(prodPriceInput.value);
-  if (priceCents === null) { setProdHint("Preis ungültig", false); soundError(); return; }
+  const priceCents = parseEuroToCents(prodPriceInput ? prodPriceInput.value : "");
+  if (priceCents === null) { setProdHint("Preis ungueltig", false); soundError(); return; }
 
-  // Overrides speichern
-  PRODUCTS_OVERRIDES[code] = { name, price: priceCents };
+  PRODUCTS_OVERRIDES[code] = { name: name, price: priceCents };
   saveOverrides(PRODUCTS_OVERRIDES);
   mergeProducts();
 
-  prodEanInput.value = code;
-  setProdHint(`Gespeichert ✅ (${code})`);
-  renderProductsList(prodSearchInput?.value || "");
+  if (prodEanInput) prodEanInput.value = code;
+  setProdHint("Gespeichert ✅ (" + code + ")", true);
+  if (prodSearchInput) renderProductsList(prodSearchInput.value || "");
   render();
 }
 
 function adminDeleteProduct() {
-  const code = normalizeCode(prodEanInput.value);
-  if (!code || !isValidCode(code)) { setProdHint("Gültigen Code zum Löschen eingeben", false); soundError(); return; }
+  const code = normalizeCode(prodEanInput ? prodEanInput.value : "");
+  if (!code || !isValidCode(code)) { setProdHint("Gueltigen Code zum Loeschen eingeben", false); soundError(); return; }
 
-  // Nur Overrides löschen (Base bleibt in products.json)
   if (!PRODUCTS_OVERRIDES[code]) {
-    setProdHint("Dieser Artikel kommt aus products.json – lösche ihn dort oder überschreibe ihn.", false);
+    setProdHint("Dieser Artikel kommt aus products.json - loesche ihn dort oder ueberschreibe ihn.", false);
     soundError();
     return;
   }
 
-  const ok = confirm(`Artikel ${code} wirklich löschen?`);
+  const ok = confirm("Artikel " + code + " wirklich loeschen?");
   if (!ok) return;
 
   delete PRODUCTS_OVERRIDES[code];
   saveOverrides(PRODUCTS_OVERRIDES);
   mergeProducts();
 
-  setProdHint("Gelöscht ✅");
-  prodNameInput.value = "";
-  prodPriceInput.value = "";
-  renderProductsList(prodSearchInput?.value || "");
+  setProdHint("Geloescht ✅", true);
+  if (prodNameInput) prodNameInput.value = "";
+  if (prodPriceInput) prodPriceInput.value = "";
+  if (prodSearchInput) renderProductsList(prodSearchInput.value || "");
   render();
 }
 
 // --- CSV Export/Import ---
 function exportProductsToCsv() {
   const rows = [["ean", "name", "preis"]];
-  Object.entries(PRODUCTS).forEach(([code, p]) => {
+  Object.entries(PRODUCTS).forEach(function (kv) {
+    const code = kv[0];
+    const p = kv[1];
     const price = (p.price / 100).toFixed(2).replace(".", ",");
     rows.push([code, p.name, price]);
   });
 
-  const csv = rows.map(r => r.join(";")).join("\n");
+  const csv = rows.map(function (r) { return r.join(";"); }).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
 
   const a = document.createElement("a");
@@ -955,40 +927,40 @@ function exportProductsToCsv() {
   a.click();
   document.body.removeChild(a);
 
-  setCsvHint("Export erfolgreich ✅");
+  setCsvHint("Export erfolgreich ✅", true);
 }
 
 function importProductsFromCsv(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = function () {
     const text = String(reader.result || "");
-    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    const lines = text.split(/\r?\n/).filter(function (l) { return l.trim(); });
 
     let added = 0;
     let skipped = 0;
 
-    for (const line of lines) {
-      const cols = line.split(";").map(c => c.trim());
-      if (!cols.length) continue;
-      if (cols[0].toLowerCase() === "ean") continue;
+    lines.forEach(function (line) {
+      const cols = line.split(";").map(function (c) { return c.trim(); });
+      if (!cols.length) return;
+      if (String(cols[0] || "").toLowerCase() === "ean") return;
 
       const code = normalizeCode(cols[0]);
       const name = cols[1];
       const priceCents = parseEuroToCents(cols[2]);
 
       if (!code || !isValidCode(code) || !name || priceCents === null) {
-        skipped++;
-        continue;
+        skipped += 1;
+        return;
       }
 
-      PRODUCTS_OVERRIDES[code] = { name, price: priceCents };
-      added++;
-    }
+      PRODUCTS_OVERRIDES[code] = { name: name, price: priceCents };
+      added += 1;
+    });
 
     saveOverrides(PRODUCTS_OVERRIDES);
     mergeProducts();
-    renderProductsList(prodSearchInput?.value || "");
-    setCsvHint(`Import fertig ✅ ${added} hinzugefügt, ${skipped} übersprungen`);
+    if (prodSearchInput) renderProductsList(prodSearchInput.value || "");
+    setCsvHint("Import fertig ✅ " + added + " hinzugefuegt, " + skipped + " uebersprungen", true);
     render();
   };
 
@@ -999,71 +971,87 @@ function importProductsFromCsv(file) {
 document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
 document.addEventListener("keydown", unlockAudioOnce, { once: true });
 
-adminBtn.onclick = openAdmin;
-closeAdmin.onclick = closeAdminModal;
-adminBackdrop.addEventListener("click", (e) => {
-  if (e.target === adminBackdrop) closeAdminModal();
-});
+if (adminBtn) adminBtn.onclick = openAdmin;
+if (closeAdmin) closeAdmin.onclick = closeAdminModal;
+if (adminBackdrop) {
+  adminBackdrop.addEventListener("click", function (e) {
+    if (e.target === adminBackdrop) closeAdminModal();
+  });
+}
 
-pinLoginBtn.onclick = loginAdmin;
-pinInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") loginAdmin();
-});
+if (pinLoginBtn) pinLoginBtn.onclick = loginAdmin;
+if (pinInput) {
+  pinInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") loginAdmin();
+  });
+}
 
-logoutAdminBtn.onclick = logoutAdmin;
-saveSettingsBtn.onclick = saveAdminSettings;
+if (logoutAdminBtn) logoutAdminBtn.onclick = logoutAdmin;
+if (saveSettingsBtn) saveSettingsBtn.onclick = saveAdminSettings;
 
-clearCartBtn.onclick = clearCart;
-stornoLastBtn.onclick = stornoLast;
-newReceiptBtn.onclick = newReceipt;
+if (clearCartBtn) clearCartBtn.onclick = clearCart;
+if (stornoLastBtn) stornoLastBtn.onclick = stornoLast;
+if (newReceiptBtn) newReceiptBtn.onclick = newReceipt;
 
-btnExact.onclick = setExact;
-btnUndo.onclick = undoLastMoneyTap;
-btnResetGiven.onclick = resetGiven;
+if (btnExact) btnExact.onclick = setExact;
+if (btnUndo) btnUndo.onclick = undoLastMoneyTap;
+if (btnResetGiven) btnResetGiven.onclick = resetGiven;
 
 if (printBtn) printBtn.onclick = manualPrint;
 if (btnPaid) btnPaid.onclick = payAndPrint;
 
-addByEanBtn.onclick = () => {
-  addItemByCode(scanInput.value);
-  scanInput.value = "";
-};
+if (addByEanBtn) {
+  addByEanBtn.onclick = function () {
+    addItemByCode(scanInput ? scanInput.value : "");
+    if (scanInput) scanInput.value = "";
+  };
+}
 
-scanInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    addItemByCode(scanInput.value);
-    scanInput.value = "";
-  }
-});
+if (scanInput) {
+  scanInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      addItemByCode(scanInput.value);
+      scanInput.value = "";
+    }
+  });
+}
 
-prodCalcCheckBtn.onclick = adminCalcCheckDigit;
-prodSaveBtn.onclick = adminSaveProduct;
-prodDeleteBtn.onclick = adminDeleteProduct;
+if (prodCalcCheckBtn) prodCalcCheckBtn.onclick = adminCalcCheckDigit;
+if (prodSaveBtn) prodSaveBtn.onclick = adminSaveProduct;
+if (prodDeleteBtn) prodDeleteBtn.onclick = adminDeleteProduct;
 
-prodSearchInput.addEventListener("input", () => renderProductsList(prodSearchInput.value));
+if (prodSearchInput) {
+  prodSearchInput.addEventListener("input", function () {
+    renderProductsList(prodSearchInput.value);
+  });
+}
 
-exportCsvBtn.onclick = exportProductsToCsv;
-importCsvInput.onchange = () => {
-  if (importCsvInput.files && importCsvInput.files.length > 0) {
-    importProductsFromCsv(importCsvInput.files[0]);
-    importCsvInput.value = "";
-  }
-};
+if (exportCsvBtn) exportCsvBtn.onclick = exportProductsToCsv;
+if (importCsvInput) {
+  importCsvInput.onchange = function () {
+    if (importCsvInput.files && importCsvInput.files.length > 0) {
+      importProductsFromCsv(importCsvInput.files[0]);
+      importCsvInput.value = "";
+    }
+  };
+}
 
 // clock
-setInterval(() => (clockEl.textContent = nowClock()), 500);
-clockEl.textContent = nowClock();
+if (clockEl) {
+  setInterval(function () { clockEl.textContent = nowClock(); }, 500);
+  clockEl.textContent = nowClock();
+}
 
 // --- Scanner SSE ---
 (function setupScannerSSE() {
   try {
     const es = new EventSource("/events");
 
-    es.addEventListener("hello", () => {
+    es.addEventListener("hello", function () {
       setScannerState(true);
     });
 
-    es.onmessage = (ev) => {
+    es.onmessage = function (ev) {
       setScannerState(true);
 
       const code = normalizeCode(ev.data);
@@ -1074,10 +1062,10 @@ clockEl.textContent = nowClock();
       if (scanInput) scanInput.value = "";
     };
 
-    es.onerror = () => {
+    es.onerror = function () {
       setScannerState(false);
     };
-  } catch {
+  } catch (e) {
     setScannerState(false);
   }
 })();
